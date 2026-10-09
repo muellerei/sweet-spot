@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="320" viewBox="0 0 1280 320" role="img" aria-label="context-relay: hands a long Claude Code session over to a fresh one">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#eef3fb"/></linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#0284c7"/><stop offset="1" stop-color="#7c3aed"/></linearGradient>
+    <linearGradient id="fill" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#0284c7"/><stop offset="1" stop-color="#7c3aed"/></linearGradient>
+    <pattern id="dots" width="28" height="28" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.2" fill="#0d1117" opacity="0.07"/></pattern>
+    <clipPath id="g1"><rect x="0" y="0" width="120" height="120" rx="26"/></clipPath>
+    <style>
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+      .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+      .card { animation: card 5s ease-in-out infinite; }
+      @keyframes card { 0%, 15% { transform: translate(0,0); opacity: 0; } 25% { transform: translate(0,0); opacity: 1; } 60%, 80% { transform: translate(104px,0); opacity: 1; } 90% { transform: translate(104px,0); opacity: 0; } 100% { transform: translate(0,0); opacity: 0; } }
+      .old { animation: old 5s ease-in-out infinite; transform-box: fill-box; transform-origin: bottom; }
+      @keyframes old { 0%, 55% { transform: scaleY(1); } 85%, 100% { transform: scaleY(0.12); } }
+      .new { animation: nw 5s ease-in-out infinite; transform-box: fill-box; transform-origin: bottom; }
+      @keyframes nw { 0%, 55% { transform: scaleY(0.12); } 85%, 100% { transform: scaleY(0.85); } }
+    </style>
+  </defs>
+  <rect width="1280" height="320" rx="24" fill="url(#bg)"/>
+  <rect width="1280" height="320" rx="24" fill="url(#dots)"/>
+  <g transform="translate(110 75.0) scale(1.0)">
+    <g transform="translate(0 25)">
+      <rect width="120" height="120" rx="26" fill="#eaeef3" stroke="#c3ccd6" stroke-width="2"/>
+      <g clip-path="url(#g1)"><rect class="old" x="0" y="0" width="120" height="120" fill="url(#fill)" opacity="0.9"/></g>
+      <line x1="-8" y1="22" x2="128" y2="22" stroke="#bf8700" stroke-width="3" stroke-dasharray="7 6"/>
+    </g>
+    <g transform="translate(176 25)">
+      <rect width="120" height="120" rx="26" fill="#eaeef3" stroke="#c3ccd6" stroke-width="2"/>
+      <g clip-path="url(#g1)"><rect class="new" x="0" y="0" width="120" height="120" fill="url(#fill)" opacity="0.9"/></g>
+      <rect width="120" height="120" rx="26" fill="none" stroke="url(#accent)" stroke-width="3"/>
+    </g>
+    <g class="card"><rect x="76" y="66" width="68" height="40" rx="9" fill="#ffffff" stroke="url(#accent)" stroke-width="3"/><rect x="88" y="78" width="36" height="6" rx="3" fill="url(#accent)"/><rect x="88" y="90" width="24" height="6" rx="3" fill="url(#accent)"/></g>
+  </g>
+  <text x="470" y="164.0" class="mono" font-size="78" font-weight="700" fill="#1f2328" letter-spacing="-2">context<tspan fill="url(#accent)">-</tspan>relay</text>
+  <text x="474" y="216.0" class="sans" font-size="30" fill="#31363d">Hands a long Claude Code session over to a fresh one</text>
+  <text x="474" y="260.0" class="sans" font-size="21" fill="#59636e">before the context gets too big · at a moment when it is safe</text>
+</svg>

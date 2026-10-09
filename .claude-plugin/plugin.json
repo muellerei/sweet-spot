@@ -1,0 +1,48 @@
+{
+  "name": "context-relay",
+  "version": "0.1.0",
+  "description": "Hands a long session over to a fresh one before the context gets too big",
+  "author": {
+    "name": "Patrick Müller",
+    "url": "https://github.com/muellerei"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/muellerei/context-relay",
+  "repository": "https://github.com/muellerei/context-relay",
+  "keywords": ["claude-code-mod", "context", "handoff", "cache"],
+  "userConfig": {
+    "threshold": {
+      "type": "number",
+      "title": "Handoff threshold (tokens)",
+      "description": "Context size at which the session is handed over to a fresh one, once the work at hand is done. Values below 130000 are rejected: a fresh session starts near that size and would hand over again at once.",
+      "default": 200000,
+      "min": 130000
+    },
+    "dry_run": {
+      "type": "boolean",
+      "title": "Dry run",
+      "description": "Only say that a handoff would happen, and do nothing. Turn it on to watch what the mod would do before it acts.",
+      "default": false
+    },
+    "min_gap_minutes": {
+      "type": "number",
+      "title": "Minimum gap after a handoff (minutes)",
+      "description": "Least time between one handoff and the next. 0 for no time gap.",
+      "default": 10,
+      "min": 0
+    },
+    "min_gap_turns": {
+      "type": "number",
+      "title": "Minimum gap after a handoff (turns)",
+      "description": "Least number of turns between one handoff and the next. 0 for no turn gap.",
+      "default": 5,
+      "min": 0
+    },
+    "handoff_command": {
+      "type": "string",
+      "title": "Handoff command",
+      "description": "Name of your own handoff command, as the command list shows it, without the slash. Leave empty and the mod writes the handoff itself.",
+      "default": ""
+    }
+  }
+}

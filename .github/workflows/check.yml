@@ -1,0 +1,44 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Weekly, so a new Claude Code that breaks the mod shows up without a commit.
+    - cron: '17 6 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The first entry is the version the mod is developed against (README, Install).
+        # `latest` reports early when a new Claude Code changes the mod interface.
+        claude-code: ['2.1.294', latest]
+    name: Claude Code ${{ matrix.claude-code }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install -g @anthropic-ai/claude-code@${{ matrix.claude-code }}
+      - run: claude --version
+      - run: claude plugin validate . --strict
+      - run: claude plugin test .
+      - name: Types
+        env:
+          # Claude Code lays down .claude-plugin/types/ only while it watches plugin folders, which a headless run does not do
+          # unless told to. No sign-in is needed: the call fails with "Not logged in" after the types are written.
+          CLAUDE_CODE_PLUGIN_DIR_WATCH: '1'
+        run: |
+          claude --plugin-dir . -p ok || true
+          npx -p typescript@5 tsc -p .
+      - run: npx prettier@3 --check hooks docs
+      - run: python3 docs/src/check.py
+      - name: Pictures match their scripts
+        run: sh docs/src/build.sh && git diff --exit-code -- docs
