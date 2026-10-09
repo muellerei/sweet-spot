@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="780" height="350" viewBox="0 0 780 350" role="img" aria-labelledby="t d">
+  <title id="t">what happens to what you type during a handover, drawn as a loop</title>
+  <desc id="d">While the summary is written you keep typing. The text is held and goes into the fresh session together with the summary. If that submit fails, both are kept, and redeliver puts them in.</desc>
+  <style>
+    text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 15px; }
+    .dim { fill: #8b949e; } .fg { fill: #e6edf3; } .y { fill: #e3b341; } .g { fill: #3fb950; } .b { fill: #58a6ff; }
+    .e { opacity: 0; animation-duration: 22s; animation-timing-function: linear; animation-iteration-count: infinite; animation-fill-mode: both; }
+    .fill { transform-box: fill-box; transform-origin: left center; }
+    @keyframes actA { 0.00% { opacity: 0 } 0.00% { opacity: 1 } 49.00% { opacity: 1 } 49.60% { opacity: 0 } 100.00% { opacity: 0 } }
+    @keyframes actB { 0.00% { opacity: 0 } 49.40% { opacity: 0 } 50.00% { opacity: 1 } 99.00% { opacity: 1 } 99.60% { opacity: 0 } 100.00% { opacity: 0 } }
+    @keyframes prog { 0.00% { opacity: 0 } 3.40% { opacity: 0 } 4.00% { opacity: 1 } 38.00% { opacity: 1 } 38.60% { opacity: 0 } 51.40% { opacity: 0 } 52.00% { opacity: 1 } 66.00% { opacity: 1 } 66.60% { opacity: 0 } 100.00% { opacity: 0 } }
+    @keyframes held { 0.00% { opacity: 0 } 11.40% { opacity: 0 } 12.00% { opacity: 1 } 38.00% { opacity: 1 } 38.60% { opacity: 0 } 55.40% { opacity: 0 } 56.00% { opacity: 1 } 66.00% { opacity: 1 } 66.60% { opacity: 0 } 100.00% { opacity: 0 } }
+    @keyframes arrowlbl { 0.00% { opacity: 0 } 35.40% { opacity: 0 } 36.00% { opacity: 1 } 49.00% { opacity: 1 } 49.60% { opacity: 0 } 63.40% { opacity: 0 } 64.00% { opacity: 1 } 79.00% { opacity: 1 } 79.60% { opacity: 0 } 100.00% { opacity: 0 } }
+    @keyframes cross { 0.00% { opacity: 0 } 66.40% { opacity: 0 } 67.00% { opacity: 1 } 79.00% { opacity: 1 } 79.60% { opacity: 0 } 100.00% { opacity: 0 } }
+    @keyframes empty { 0.00% { opacity: 0 } 68.40% { opacity: 0 } 69.00% { opacity: 1 } 80.00% { opacity: 1 } 80.60% { opacity: 0 } 100.00% { opacity: 0 } }
+    @keyframes store { 0.00% { opacity: 0 } 65.40% { opacity: 0 } 66.00% { opacity: 1 } 84.00% { opacity: 1 } 84.60% { opacity: 0 } 100.00% { opacity: 0 } }
+    @keyframes redeliver { 0.00% { opacity: 0 } 77.40% { opacity: 0 } 78.00% { opacity: 1 } 98.00% { opacity: 1 } 98.60% { opacity: 0 } 100.00% { opacity: 0 } }
+    @keyframes first { 0.00% { opacity: 0 } 43.40% { opacity: 0 } 44.00% { opacity: 1 } 49.00% { opacity: 1 } 49.60% { opacity: 0 } 87.40% { opacity: 0 } 88.00% { opacity: 1 } 98.00% { opacity: 1 } 98.60% { opacity: 0 } 100.00% { opacity: 0 } }
+    @keyframes capA { 0.00% { opacity: 0 } 0.00% { opacity: 1 } 49.00% { opacity: 1 } 49.60% { opacity: 0 } 100.00% { opacity: 0 } }
+    @keyframes capB { 0.00% { opacity: 0 } 49.40% { opacity: 0 } 50.00% { opacity: 1 } 99.00% { opacity: 1 } 99.60% { opacity: 0 } 100.00% { opacity: 0 } }
+    @keyframes chipT { 0.00% { opacity: 0; transform: translate(0px, 0px) } 9.40% { opacity: 0; transform: translate(0px, 0px) } 10.00% { opacity: 1; transform: translate(0px, 0px) } 38.00% { opacity: 1; transform: translate(0px, 0px) } 44.00% { opacity: 1; transform: translate(408px, 0px) } 48.80% { opacity: 1; transform: translate(408px, 0px) } 49.60% { opacity: 0; transform: translate(408px, 0px) } 50.00% { opacity: 0; transform: translate(0px, 0px) } 53.40% { opacity: 0; transform: translate(0px, 0px) } 54.00% { opacity: 1; transform: translate(0px, 0px) } 66.00% { opacity: 1; transform: translate(0px, 0px) } 69.00% { opacity: 1; transform: translate(250px, 100px) } 82.00% { opacity: 1; transform: translate(250px, 100px) } 88.00% { opacity: 1; transform: translate(408px, 0px) } 97.00% { opacity: 1; transform: translate(408px, 0px) } 98.50% { opacity: 0; transform: translate(408px, 0px) } 100.00% { opacity: 0; transform: translate(0px, 0px) } }
+    @keyframes chipS { 0.00% { opacity: 0; transform: translate(0px, 0px) } 31.40% { opacity: 0; transform: translate(0px, 0px) } 32.00% { opacity: 1; transform: translate(0px, 0px) } 38.00% { opacity: 1; transform: translate(0px, 0px) } 44.00% { opacity: 1; transform: translate(416px, 0px) } 48.80% { opacity: 1; transform: translate(416px, 0px) } 49.60% { opacity: 0; transform: translate(416px, 0px) } 50.00% { opacity: 0; transform: translate(0px, 0px) } 61.40% { opacity: 0; transform: translate(0px, 0px) } 62.00% { opacity: 1; transform: translate(0px, 0px) } 66.00% { opacity: 1; transform: translate(0px, 0px) } 69.00% { opacity: 1; transform: translate(258px, 106px) } 82.00% { opacity: 1; transform: translate(258px, 106px) } 88.00% { opacity: 1; transform: translate(416px, 0px) } 97.00% { opacity: 1; transform: translate(416px, 0px) } 98.50% { opacity: 0; transform: translate(416px, 0px) } 100.00% { opacity: 0; transform: translate(0px, 0px) } }
+    @keyframes fill { 0%, 4% { opacity: 1; transform: scaleX(0) } 30% { opacity: 1; transform: scaleX(1) } 38%, 52% { opacity: 0; transform: scaleX(1) } 52.01% { opacity: 1; transform: scaleX(0) } 62% { opacity: 1; transform: scaleX(1) } 66%, 100% { opacity: 0; transform: scaleX(1) } }
+    @media (prefers-reduced-motion: reduce) {
+      .e { animation: none; opacity: 0; } .e.fin { opacity: 1; } .fill { display: none; } .chip { transform: translate(416px, 0); }
+    }
+  </style>
+  <rect width="780" height="350" rx="10" fill="#0d1117"/>
+  <rect width="780" height="34" rx="10" fill="#161b22"/><rect y="24" width="780" height="10" fill="#161b22"/>
+  <circle cx="22" cy="17" r="5.5" fill="#ff5f56"/><circle cx="42" cy="17" r="5.5" fill="#ffbd2e"/><circle cx="62" cy="17" r="5.5" fill="#27c93f"/>
+  <text x="390" y="22" text-anchor="middle" class="dim" style="font-size:12px">context-relay</text>
+  <rect x="36" y="50" width="290" height="166" rx="8" fill="#161b22" stroke="#30363d"/>
+  <text x="52" y="74" class="dim">old session</text>
+  <rect x="52" y="158" width="258" height="38" rx="6" fill="#0d1117" stroke="#30363d"/>
+  <rect x="454" y="50" width="290" height="166" rx="8" fill="#161b22" stroke="#30363d"/>
+  <text x="470" y="74" class="dim">new session</text>
+  <rect x="462" y="118" width="268" height="92" rx="6" fill="#0d1117" stroke="#30363d"/>
+  <line x1="332" y1="130" x2="440" y2="130" stroke="#30363d" stroke-width="2"/><path d="M440 124 L452 130 L440 136 Z" fill="#30363d"/>
+  <g class="e" style="animation-name:actA"><text x="36" y="262" class="g">1 · it works</text></g>
+  <g class="e fin" style="animation-name:actB"><text x="36" y="262" class="y">2 · the submit fails</text></g>
+  <g class="e" style="animation-name:prog"><text x="52" y="96" class="dim" style="font-size:12px">handover running</text><rect x="52" y="104" width="258" height="10" rx="3" fill="#21262d"/></g>
+  <g class="e" style="animation-name:held"><text x="52" y="208" class="y" style="font-size:12px">held, not lost</text></g>
+  <g class="e" style="animation-name:arrowlbl"><text x="390" y="116" text-anchor="middle" class="dim" style="font-size:11px">/clear + submit</text></g>
+  <g class="e" style="animation-name:cross"><text x="390" y="146" text-anchor="middle" class="y" style="font-size:26px">✕</text></g>
+  <g class="e" style="animation-name:empty"><text x="478" y="152" class="y" style="font-size:12px">nothing arrived</text></g>
+  <g class="e" style="animation-name:store"><rect x="300" y="226" width="180" height="84" rx="8" fill="none" stroke="#30363d" stroke-dasharray="4 4"/><text x="408" y="258" class="dim" style="font-size:12px">kept</text></g>
+  <g class="e fin" style="animation-name:redeliver"><rect x="470" y="82" width="234" height="26" rx="4" fill="#21262d" stroke="#30363d"/><text x="479" y="100" class="b">/context-relay redeliver</text></g>
+  <g class="e fin" style="animation-name:first"><text x="474" y="202" class="dim" style="font-size:11px">first message</text></g>
+  <g class="e" style="animation-name:capA"><text x="390" y="334" text-anchor="middle" class="dim">typed meanwhile, the text is held and goes in with the summary</text></g>
+  <g class="e fin" style="animation-name:capB"><text x="390" y="334" text-anchor="middle" class="dim">nothing is lost: redeliver puts it in</text></g>
+  <rect class="fill e" x="52" y="104" width="258" height="10" rx="3" fill="#3fb950" style="animation-name:fill"/>
+  <g class="e chip fin-chip" style="animation-name:chipT"><rect x="60" y="166" width="135" height="26" rx="4" fill="#21262d" stroke="#30363d"/><text x="69" y="184" class="b">fix the tests</text></g>
+  <g class="e chip fin-chip" style="animation-name:chipS"><rect x="52" y="130" width="81" height="26" rx="4" fill="#21262d" stroke="#30363d"/><text x="61" y="148" class="g">summary</text></g>
+</svg>

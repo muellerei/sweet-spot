@@ -1,0 +1,28 @@
+.DS_Store
+.idea/
+node_modules/
+
+# Not in the repository: specs, notes, working material
+local/
+.scratch/
+docs/agents/
+GLOSSARY.md
+
+# Agent working instructions: names local paths and habits that have no
+# business in a published repository.
+CLAUDE.md
+.claude/
+
+# Written by Claude Code each time it loads the mod: its API types for the editor
+.claude-plugin/types/
+
+# Credentials
+.env
+.env.*
+
+# Editors
+.vscode/
+*.swp
+
+# Written by Python when docs/src/build.sh runs
+__pycache__/

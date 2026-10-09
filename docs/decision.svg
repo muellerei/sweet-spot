@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="780" height="330" viewBox="0 0 780 330" role="img" aria-labelledby="t d">
+  <title id="t">the questions context-relay asks at every pause, in order</title>
+  <desc id="d">Five checks in a fixed order, each drawn as a symbol: a real pause, enough context, nothing running, enough time since the last attempt, dry run off. A dot passes them and the mod hands over; in a second run work is still running and the dot waits at the third check.</desc>
+  <style>
+    text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 15px; }
+    .dim { fill: #8b949e; } .fg { fill: #e6edf3; } .y { fill: #e3b341; } .g { fill: #3fb950; } .b { fill: #58a6ff; }
+    .e { opacity: 0; animation-duration: 18s; animation-timing-function: linear; animation-iteration-count: infinite; animation-fill-mode: both; }
+    .tokc { fill: #3fb950; animation: tokc 18s linear infinite both; }
+    @keyframes doneA { 0.00% { opacity: 0 } 42.40% { opacity: 0 } 43.00% { opacity: 1 } 49.00% { opacity: 1 } 49.60% { opacity: 0 } 100.00% { opacity: 0 } }
+    @keyframes capA { 0.00% { opacity: 0 } 0.00% { opacity: 1 } 49.00% { opacity: 1 } 49.60% { opacity: 0 } 100.00% { opacity: 0 } }
+    @keyframes capB { 0.00% { opacity: 0 } 49.40% { opacity: 0 } 50.00% { opacity: 1 } 99.00% { opacity: 1 } 99.60% { opacity: 0 } 100.00% { opacity: 0 } }
+    @keyframes hl0 { 0.00% { opacity: 0 } 7.20% { opacity: 0 } 8.00% { opacity: 1 } 11.00% { opacity: 1 } 11.80% { opacity: 0 } 57.20% { opacity: 0 } 58.00% { opacity: 1 } 61.00% { opacity: 1 } 61.80% { opacity: 0 } 100.00% { opacity: 0 } }
+    @keyframes hl1 { 0.00% { opacity: 0 } 14.20% { opacity: 0 } 15.00% { opacity: 1 } 18.00% { opacity: 1 } 18.80% { opacity: 0 } 64.20% { opacity: 0 } 65.00% { opacity: 1 } 68.00% { opacity: 1 } 68.80% { opacity: 0 } 100.00% { opacity: 0 } }
+    @keyframes hl2 { 0.00% { opacity: 0 } 21.20% { opacity: 0 } 22.00% { opacity: 1 } 25.00% { opacity: 1 } 25.80% { opacity: 0 } 71.20% { opacity: 0 } 72.00% { opacity: 1 } 98.00% { opacity: 1 } 98.80% { opacity: 0 } 100.00% { opacity: 0 } }
+    @keyframes hl3 { 0.00% { opacity: 0 } 28.20% { opacity: 0 } 29.00% { opacity: 1 } 32.00% { opacity: 1 } 32.80% { opacity: 0 } 100.00% { opacity: 0 } }
+    @keyframes hl4 { 0.00% { opacity: 0 } 35.20% { opacity: 0 } 36.00% { opacity: 1 } 39.00% { opacity: 1 } 39.80% { opacity: 0 } 100.00% { opacity: 0 } }
+    @keyframes tok { 0.00% { opacity: 0; transform: translate(0px, 0px) } 1.00% { opacity: 0; transform: translate(0px, 0px) } 2.00% { opacity: 1; transform: translate(0px, 0px) } 8.00% { opacity: 1; transform: translate(54px, 0px) } 11.00% { opacity: 1; transform: translate(54px, 0px) } 15.00% { opacity: 1; transform: translate(186px, 0px) } 18.00% { opacity: 1; transform: translate(186px, 0px) } 22.00% { opacity: 1; transform: translate(318px, 0px) } 25.00% { opacity: 1; transform: translate(318px, 0px) } 29.00% { opacity: 1; transform: translate(450px, 0px) } 32.00% { opacity: 1; transform: translate(450px, 0px) } 36.00% { opacity: 1; transform: translate(582px, 0px) } 39.00% { opacity: 1; transform: translate(582px, 0px) } 44.00% { opacity: 1; transform: translate(670px, 0px) } 47.50% { opacity: 1; transform: translate(670px, 0px) } 48.70% { opacity: 0; transform: translate(670px, 0px) } 50.00% { opacity: 0; transform: translate(0px, 0px) } 51.00% { opacity: 0; transform: translate(0px, 0px) } 52.00% { opacity: 1; transform: translate(0px, 0px) } 58.00% { opacity: 1; transform: translate(54px, 0px) } 61.00% { opacity: 1; transform: translate(54px, 0px) } 65.00% { opacity: 1; transform: translate(186px, 0px) } 68.00% { opacity: 1; transform: translate(186px, 0px) } 72.00% { opacity: 1; transform: translate(304px, 0px) } 97.00% { opacity: 1; transform: translate(304px, 0px) } 98.40% { opacity: 0; transform: translate(304px, 0px) } 100.00% { opacity: 0; transform: translate(0px, 0px) } }
+    @keyframes tokc { 0%, 71.9% { fill: #3fb950 } 72.5%, 100% { fill: #e3b341 } }
+    @media (prefers-reduced-motion: reduce) {
+      .e { animation: none; opacity: 0; } .e.fin { opacity: 1; } .tokc { animation: none; }
+    }
+  </style>
+  <rect width="780" height="330" rx="10" fill="#0d1117"/>
+  <rect width="780" height="34" rx="10" fill="#161b22"/><rect y="24" width="780" height="10" fill="#161b22"/>
+  <circle cx="22" cy="17" r="5.5" fill="#ff5f56"/><circle cx="42" cy="17" r="5.5" fill="#ffbd2e"/><circle cx="62" cy="17" r="5.5" fill="#27c93f"/>
+  <text x="390" y="22" text-anchor="middle" class="dim" style="font-size:12px">context-relay</text>
+  <text x="36" y="58" class="dim" style="font-size:13px">at every pause, in this order; the first “no” ends the check</text>
+  <line x1="36" y1="150" x2="716" y2="150" stroke="#21262d" stroke-width="2"/>
+  <g id="g0"><path d="M70 78 h40 a6 6 0 0 1 6 6 v16 a6 6 0 0 1 -6 6 h-22 l-10 8 v-8 h-8 a6 6 0 0 1 -6 -6 v-16 a6 6 0 0 1 6 -6 z" stroke="#8b949e" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M81 92 l6 6 l12 -12" stroke="#3fb950" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <line x1="90" y1="132" x2="90" y2="168" stroke="#30363d" stroke-width="2"/>
+  <text x="90" y="196" text-anchor="middle" class="fg" style="font-size:14px">a real pause?</text>
+  <text x="90" y="214" text-anchor="middle" class="dim" style="font-size:11px">answer ended</text>
+  <text x="90" y="228" text-anchor="middle" class="dim" style="font-size:11px">normally</text>
+  <text x="90" y="250" text-anchor="middle" class="dim" style="font-size:11px">no: nothing</text>
+  <rect class="e" style="animation-name:hl0" x="28" y="72" width="124" height="188" rx="8" fill="none" stroke="#58a6ff" stroke-width="1.5" opacity="0"/>
+  <g id="g1"><rect x="200" y="86" width="44" height="12" rx="3" stroke="#8b949e" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><rect x="200" y="86" width="38" height="12" rx="3" fill="#8b949e" opacity=".45"/><line x1="232" y1="78" x2="232" y2="106" stroke="#e3b341" stroke-width="2" stroke-dasharray="3 3"/></g>
+  <line x1="222" y1="132" x2="222" y2="168" stroke="#30363d" stroke-width="2"/>
+  <text x="222" y="196" text-anchor="middle" class="fg" style="font-size:14px">big enough?</text>
+  <text x="222" y="214" text-anchor="middle" class="dim" style="font-size:11px">context at the</text>
+  <text x="222" y="228" text-anchor="middle" class="dim" style="font-size:11px">threshold</text>
+  <text x="222" y="250" text-anchor="middle" class="dim" style="font-size:11px">no: nothing</text>
+  <rect class="e" style="animation-name:hl1" x="160" y="72" width="124" height="188" rx="8" fill="none" stroke="#58a6ff" stroke-width="1.5" opacity="0"/>
+  <g id="g2"><circle cx="354" cy="92" r="14" stroke="#8b949e" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="62 26"/><circle cx="349" cy="92" r="2" fill="#8b949e"/><circle cx="354" cy="92" r="2" fill="#8b949e"/><circle cx="359" cy="92" r="2" fill="#8b949e"/></g>
+  <line x1="354" y1="132" x2="354" y2="168" stroke="#30363d" stroke-width="2"/>
+  <text x="354" y="196" text-anchor="middle" class="fg" style="font-size:14px">all quiet?</text>
+  <text x="354" y="214" text-anchor="middle" class="dim" style="font-size:11px">no subagent, task</text>
+  <text x="354" y="228" text-anchor="middle" class="dim" style="font-size:11px">or timer running</text>
+  <text x="354" y="250" text-anchor="middle" class="y" style="font-size:11px">no: waits</text>
+  <rect class="e" style="animation-name:hl2" x="292" y="72" width="124" height="188" rx="8" fill="none" stroke="#58a6ff" stroke-width="1.5" opacity="0"/>
+  <g id="g3"><circle cx="486" cy="92" r="15" stroke="#8b949e" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M486 84 V92 l7 4" stroke="#8b949e" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <line x1="486" y1="132" x2="486" y2="168" stroke="#30363d" stroke-width="2"/>
+  <text x="486" y="196" text-anchor="middle" class="fg" style="font-size:14px">not too soon?</text>
+  <text x="486" y="214" text-anchor="middle" class="dim" style="font-size:11px">last attempt was</text>
+  <text x="486" y="228" text-anchor="middle" class="dim" style="font-size:11px">a while ago</text>
+  <text x="486" y="250" text-anchor="middle" class="y" style="font-size:11px">no: waits</text>
+  <rect class="e" style="animation-name:hl3" x="424" y="72" width="124" height="188" rx="8" fill="none" stroke="#58a6ff" stroke-width="1.5" opacity="0"/>
+  <g id="g4"><rect x="598" y="82" width="40" height="20" rx="10" stroke="#8b949e" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="608" cy="92" r="6" fill="#8b949e"/></g>
+  <line x1="618" y1="132" x2="618" y2="168" stroke="#30363d" stroke-width="2"/>
+  <text x="618" y="196" text-anchor="middle" class="fg" style="font-size:14px">dry run off?</text>
+  <text x="618" y="214" text-anchor="middle" class="dim" style="font-size:11px">else it only</text>
+  <text x="618" y="228" text-anchor="middle" class="dim" style="font-size:11px">reports</text>
+  <text x="618" y="250" text-anchor="middle" class="dim" style="font-size:11px">no: only reports</text>
+  <rect class="e" style="animation-name:hl4" x="556" y="72" width="124" height="188" rx="8" fill="none" stroke="#58a6ff" stroke-width="1.5" opacity="0"/>
+  <g class="e" style="animation-name:doneA"><text x="706" y="136" text-anchor="middle" class="g" style="font-size:13px">hands over</text></g>
+  <g class="e" style="animation-name:capA"><text x="390" y="316" text-anchor="middle" class="dim">all clear: it hands over</text></g>
+  <g class="e fin" style="animation-name:capB"><text x="390" y="316" text-anchor="middle" class="dim">work still running: it waits for the next pause</text></g>
+  <g class="e tokg" style="animation-name:tok"><circle class="tokc" cx="36" cy="150" r="8"/></g>
+</svg>

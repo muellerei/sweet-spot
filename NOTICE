@@ -1,0 +1,20 @@
+Parts of the design and logic of context-relay are derived from two MIT-licensed
+mods. Their notices follow.
+
+ctx-handoff-mod
+
+MIT License
+
+Copyright (c) 2026 cablate
+
+auto-handoff
+
+MIT License
+
+Copyright (c) 2026 Damian (Spardutti)
+
+Both under the same terms as the license of context-relay (LICENSE): permission is
+granted to use, copy, modify, merge, publish, distribute, sublicense and sell,
+provided the copyright notice and this permission notice are included in all copies
+or substantial portions of the Software. The software is provided "as is", without
+warranty of any kind.

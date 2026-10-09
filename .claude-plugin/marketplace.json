@@ -1,0 +1,12 @@
+{
+  "name": "muellerei-context-relay",
+  "owner": { "name": "Patrick Müller" },
+  "description": "Claude Code mods by muellerei.",
+  "plugins": [
+    {
+      "name": "context-relay",
+      "source": "./",
+      "description": "Hands a long session over to a fresh one before the context gets too big."
+    }
+  ]
+}
