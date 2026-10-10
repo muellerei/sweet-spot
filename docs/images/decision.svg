@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="780" height="330" viewBox="0 0 780 330" role="img" aria-labelledby="t d">
   <title id="t">the questions sweet-spot asks at every pause, in order</title>
-  <desc id="d">Five checks in a fixed order, each drawn as a symbol: a real pause, enough context, nothing running, enough time since the last attempt, dry run off. A dot passes them and the mod hands over; in a second run work is still running and the dot waits at the third check.</desc>
+  <desc id="d">Five checks in a fixed order, each drawn as a symbol: a real pause, enough context, nothing running, enough time since the last attempt, dry run off. A dot passes them and the mod hands over, by a handoff or by compacting; in a second run work is still running and the dot waits at the third check.</desc>
   <style>
     text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 15px; }
     .dim { fill: #8b949e; } .fg { fill: #e6edf3; } .y { fill: #e3b341; } .g { fill: #3fb950; } .b { fill: #58a6ff; }

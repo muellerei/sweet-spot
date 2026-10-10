@@ -1,13 +1,15 @@
 // What a handoff does to the session: runs the user's command as a turn of its own, waits for the end of that turn, reads the file the
-// command wrote, clears the session and submits the handoff as the first message of the new one. When the command gives no handoff, a
-// fork of the history writes it instead.
+// command wrote, clears the session and submits the handoff as the first message of the new one. When the command gives no handoff, the
+// mod writes it instead (the internal handoff).
 
 import {
   ASK_FOR_PATH,
+  COMPACT_CANCELLED,
+  USER_REJECTED,
   firstMessage,
-  FORK_TIMEOUT_MS,
-  forkFailure,
-  forkKind,
+  MODEL_FORK_TIMEOUT_MS,
+  modelForkFailure,
+  modelForkKind,
   handoffPath,
   newestHandoff,
   promptFrom,
@@ -16,8 +18,9 @@ import {
   withHeld,
   withoutTrailingSeparator,
   type Entry,
-  type ForkAnswer,
+  type ModelForkAnswer,
 } from './handoff'
+import type { Config, Method } from './config'
 import { fellBackLine } from './report'
 import type { Level } from './log'
 import type { Ended, State } from './state'
@@ -33,7 +36,9 @@ export type Io = {
   listDir: (path: string) => Promise<Entry[]>
   tmpdir: () => Promise<string | undefined>
   home: () => Promise<string | undefined>
-  fork: (prompt: string) => Promise<ForkAnswer>
+  modelFork: (prompt: string) => Promise<ModelForkAnswer>
+  // Claude Code's own /compact, with no instructions. It resolves with `skip` when a hook vetoed it, and rejects when the host refuses.
+  compact: () => Promise<{ skip?: string }>
   // Says a change of way where the person looks.
   tell: (text: string) => void
   // One line of the diagnostic output; shows only at the log level in force.
@@ -49,10 +54,13 @@ export type Io = {
 // The command's turn takes seconds; this is for a turn that never ends, or one held by a permission prompt nobody answers.
 const TURN_TIMEOUT_MS = 5 * 60_000
 
-// The stage says how far the handoff got, and so what is left to put right: up to `read`, and at `fork`, nothing has changed in the
+// The stage says how far the handoff got, and so what is left to put right: up to `read`, and at `model-fork`, nothing has changed in the
 // session (`cancelled`: the user's own Esc, not tried another way), `clear` failed before it changed anything, and `submit` failed after it, in the fresh session. `error` is what no stage
-// expected. `fork` is the last way tried: its reason carries the reason the command failed first.
-export type Failure = { stage: 'command' | 'cancelled' | 'turn' | 'path' | 'read' | 'fork' | 'clear' | 'submit' | 'error'; reason: string }
+// expected. `model-fork` is the last way tried: its reason carries the reason the command failed first.
+export type Failure = { stage: 'command' | 'cancelled' | 'turn' | 'path' | 'read' | 'model-fork' | 'compact' | 'clear' | 'submit' | 'error'; reason: string }
+
+// How a run ended: with the failure, or with the way that handed over (a redelivery has no way to name).
+export type Outcome = { failure: Failure; method?: undefined } | { failure?: undefined; method?: Method }
 
 const failed = (stage: Failure['stage'], reason: string): Failure => ({ stage, reason })
 
@@ -84,11 +92,22 @@ export const startOfTurn = (state: State, turnId: string): boolean => {
   return wait?.own === turnId
 }
 
+// Looks at one finished tool call: the user's decline at the permission prompt in the command's own turn is noted. Which turn is by time: the
+// input of `tool.call` carries no turn id, and while `own` is set that turn is the only one that runs. A subagent's calls (`agentId`, also
+// from earlier turns still running) are not the user's answer to the command. True when the decline is new.
+export const noteToolResult = (state: State, e: { agentId?: string }, out: { isError?: unknown; text?: unknown }): boolean => {
+  const wait = state.turnWait
+  if (wait === undefined || wait.own === undefined || e.agentId !== undefined || wait.rejected) return false
+  if (out.isError !== true || typeof out.text !== 'string' || !out.text.startsWith(USER_REJECTED)) return false
+  wait.rejected = true
+  return true
+}
+
 export const endOfTurn = (state: State, e: { turnId: string; answer: string; reason: string }): 'own' | 'foreign' | undefined => {
   const wait = state.turnWait
   if (wait === undefined) return undefined
   if (e.turnId !== wait.own) return 'foreign'
-  if (e.reason === 'answer') wait.end({ answer: e.answer })
+  if (e.reason === 'answer') wait.end(wait.rejected ? { answer: e.answer, rejected: true } : { answer: e.answer })
   else if (e.reason === 'aborted') wait.end({ failure: "the command's turn was interrupted", cancelled: true })
   else wait.end({ failure: `the command's turn ended without an answer (${e.reason})` })
   return 'own'
@@ -220,22 +239,22 @@ const record = async (io: Io, sessionId: string, failure: Failure | undefined) =
 }
 
 // Runs one way of producing and delivering the handoff, then settles what was held meanwhile and what the failure leaves to put right.
-export const carryOut = async (io: Io, state: State, produce: () => Promise<Failure | undefined>): Promise<Failure | undefined> => {
+export const carryOut = async (io: Io, state: State, produce: () => Promise<Outcome>): Promise<Outcome> => {
   // A message pending from an earlier handoff is not this one's: this one's typing must not be added to it.
   const earlier = state.pending
   state.pending = undefined
   let sessionId = 'unknown'
-  let failure: Failure | undefined
+  let outcome: Outcome
   try {
     sessionId = await io.sessionId()
-    failure = await produce()
+    outcome = await produce()
   } catch (err) {
-    failure = failed('error', why(err))
+    outcome = { failure: failed('error', why(err)) }
   }
-  failure = await release(io, state, failure)
+  const failure = await release(io, state, outcome.failure)
   state.pending ??= earlier
   await record(io, sessionId, failure)
-  return failure
+  return failure === outcome.failure ? outcome : { failure }
 }
 
 const pendingMessage = async (io: Io, state: State): Promise<{ key: string; text: string }> => {
@@ -290,7 +309,11 @@ const throughCommand = async (io: Io, state: State, command: string): Promise<Fa
       ? `the answer names ${named}`
       : `the answer names no file, ${file === undefined ? 'the temp directory has none' : `the temp directory has ${file}`}`,
   )
-  if (file === undefined) return failed('path', 'the answer names no handoff file and the temp directory has none from this run')
+  if (file === undefined) {
+    // No file because the user declined a permission the command asked for: their own stop, not a handoff that is missing.
+    if (end.rejected) return failed('cancelled', 'you declined a permission the command asked for')
+    return failed('path', 'the answer names no handoff file and the temp directory has none from this run')
+  }
   if (named !== undefined) {
     const at = Math.max(named.lastIndexOf('/'), named.lastIndexOf('\\'))
     const entry = (await io.listDir(named.slice(0, at + 1) || '/').catch(() => [])).find(e => e.name === named.slice(at + 1))
@@ -308,21 +331,22 @@ const throughCommand = async (io: Io, state: State, command: string): Promise<Fa
   return deliver(io, state, firstMessage(handoff), file)
 }
 
-// `$.model.fork` cannot be cancelled: the wait is limited, and an answer after the limit finds nobody waiting.
-const forkWithin = async (io: Io, prompt: string): Promise<ForkAnswer> => {
+// A `$.model.fork` call cannot be cancelled: the wait is limited. After the timeout it keeps running in the background and its late
+// answer reaches no one, which is harmless.
+const modelForkWithin = async (io: Io, prompt: string): Promise<ModelForkAnswer> => {
   let timer: { cancel: () => void } | undefined
-  const late = new Promise<ForkAnswer>(resolve => {
-    timer = io.after(FORK_TIMEOUT_MS, () => resolve({ isAnswered: false, reason: 'timeout' }))
+  const late = new Promise<ModelForkAnswer>(resolve => {
+    timer = io.after(MODEL_FORK_TIMEOUT_MS, () => resolve({ isAnswered: false, reason: 'timeout' }))
   })
   try {
-    return await Promise.race([io.fork(prompt), late])
+    return await Promise.race([io.modelFork(prompt), late])
   } finally {
     timer?.cancel()
   }
 }
 
 // The prompt of the user's own under `~/.claude`, else the one the mod brings: no home directory and no readable file are no failure.
-const forkPrompt = async (io: Io): Promise<{ prompt: string; source: string }> => {
+const internalHandoffPrompt = async (io: Io): Promise<{ prompt: string; source: string }> => {
   try {
     const home = await io.home()
     if (home === undefined) return { prompt: promptFrom(undefined), source: "the mod's own prompt" }
@@ -335,36 +359,76 @@ const forkPrompt = async (io: Io): Promise<{ prompt: string; source: string }> =
   }
 }
 
-const throughFork = async (io: Io, state: State): Promise<Failure | undefined> => {
-  let answer: ForkAnswer
+const throughInternalHandoff = async (io: Io, state: State): Promise<Failure | undefined> => {
+  let answer: ModelForkAnswer
   const began = await io.now()
   try {
-    const { prompt, source } = await forkPrompt(io)
-    io.log('debug', `fork asked, ${source}`)
-    answer = await forkWithin(io, prompt)
+    const { prompt, source } = await internalHandoffPrompt(io)
+    io.log('debug', `internal handoff asked, ${source}`)
+    answer = await modelForkWithin(io, prompt)
   } catch (err) {
-    return failed('fork', `the fork gave no handoff: the fork failed (${why(err)})`)
+    return failed('model-fork', `the mod could not write the handoff: writing the handoff failed (${why(err)})`)
   }
   const took = `after ${(await io.now()) - began} ms`
-  if (answer.isAnswered) io.log('info', `fork answered, ${answer.text.length} characters, ${took}`)
-  else io.log('warn', `fork gave nothing (${forkKind(answer)}), ${took}`)
-  if (!answer.isAnswered) return failed('fork', `the fork gave no handoff: ${forkFailure(answer)}`)
-  if (answer.text.trim() === '') return failed('fork', 'the fork gave no handoff: the fork replied with no text')
+  if (answer.isAnswered) io.log('info', `internal handoff answered, ${answer.text.length} characters, ${took}`)
+  else io.log('warn', `internal handoff gave nothing (${modelForkKind(answer)}), ${took}`)
+  if (!answer.isAnswered) return failed('model-fork', `the mod could not write the handoff: ${modelForkFailure(answer)}`)
+  if (answer.text.trim() === '') return failed('model-fork', 'the mod could not write the handoff: the model replied with no text')
   return deliver(io, state, firstMessage(answer.text))
 }
 
-// With no command set the fork writes the handoff at once; nothing was tried before, so there is no fallback to report. Otherwise the
-// command first. Where it is missing or gives no handoff the session is as it was, and a fork writes the handoff: the change is said
-// with its reason, and if the fork gives nothing either the handoff fails with both reasons. A failure at `clear`, `submit` or an
-// unexpected one is not a missing handoff and is not tried again another way.
-const MISSING: Failure['stage'][] = ['command', 'turn', 'path', 'read']
+// The session stays and only gets smaller: nothing is cleared, nothing is submitted, and nothing is left for `redeliver`. Called directly: the
+// host refuses a compact from inside the stop, and the mod judges only once the stop and the end of its turn are both in, with the stop
+// first (measured, 10 of 10 turns), so this runs from the end of the turn. If the end of a turn ever came before the stop, the host would
+// refuse, which is a failure at stage `compact` like any other, and the fallback takes over.
+const throughBuiltinCompact = async (io: Io, state: State): Promise<Failure | undefined> => {
+  // A compact that left the context above the threshold fails before it is asked: it would do the same again.
+  if (state.compactCheck?.kind === 'insufficient') return failed('compact', 'the last compact left the context above the threshold')
+  const began = await io.now()
+  io.log('debug', 'compact asked')
+  let result: { skip?: string }
+  try {
+    result = await io.compact()
+  } catch (err) {
+    // Esc is the user's own stop: no other way hands over after it. The reason is in the refusal's words, which the log never carries.
+    if (why(err).includes(COMPACT_CANCELLED)) return failed('cancelled', 'you canceled the compact')
+    io.log('warn', 'compact refused')
+    return failed('compact', `compact was refused (${why(err)})`)
+  }
+  if (result.skip !== undefined) {
+    io.log('warn', 'compact skipped')
+    return failed('compact', `compact was skipped (${result.skip})`)
+  }
+  io.log('info', `compacted, after ${(await io.now()) - began} ms`)
+  return undefined
+}
 
-export const throughChain = async (io: Io, state: State, command: string): Promise<Failure | undefined> => {
-  if (command === '') return throughFork(io, state)
-  const first = await throughCommand(io, state, command)
-  if (first === undefined || !MISSING.includes(first.stage)) return first
-  io.tell(fellBackLine(first.reason))
-  io.log('warn', `fork fallback (stage ${first.stage})`)
-  const second = await throughFork(io, state)
-  return second?.stage === 'fork' ? { ...second, reason: `${first.reason}; ${second.reason}` } : second
+// The main method first. Where it fails before it changed the session, the fallback is tried: the change is said with its reason, and if
+// the fallback fails as well, the handoff fails with both reasons. A failure after the session changed (`submit`), the user's own stop
+// (`cancelled`) and what no stage expected (`error`) are not tried another way.
+// The stages after which the session is as it was: one list, for the first failure and the second.
+const FALLBACK_STAGES: Failure['stage'][] = ['command', 'turn', 'path', 'read', 'model-fork', 'compact', 'clear']
+
+// Whether a way ends in `/clear`: a failure at `/clear` leaves a fallback that needs it nothing to try.
+const NEEDS_CLEAR: Record<Method, boolean> = { 'external-command': true, 'internal-handoff': true, 'builtin-compact': false }
+
+const through = (io: Io, state: State, config: Config, method: Method): Promise<Failure | undefined> =>
+  ({
+    'external-command': () => throughCommand(io, state, config.handoffCommand),
+    'internal-handoff': () => throughInternalHandoff(io, state),
+    'builtin-compact': () => throughBuiltinCompact(io, state),
+  })[method]()
+
+// `configOf` has turned the same way in both settings into `none`, so the fallback is a different way here.
+export const throughMethods = async (io: Io, state: State, config: Config): Promise<Outcome> => {
+  const first = await through(io, state, config, config.handoffMethod)
+  if (first === undefined) return { method: config.handoffMethod }
+  const fallback = config.handoffFallback
+  if (fallback === 'none' || !FALLBACK_STAGES.includes(first.stage)) return { failure: first }
+  if (first.stage === 'clear' && NEEDS_CLEAR[fallback]) return { failure: { ...first, reason: `${first.reason}; the fallback needs /clear too` } }
+  io.tell(fellBackLine(first.reason, config.handoffMethod, fallback))
+  io.log('warn', `fallback to ${fallback} (stage ${first.stage})`)
+  const second = await through(io, state, config, fallback)
+  if (second === undefined) return { method: fallback }
+  return { failure: FALLBACK_STAGES.includes(second.stage) ? { ...second, reason: `${first.reason}; ${second.reason}` } : second }
 }

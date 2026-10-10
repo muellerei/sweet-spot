@@ -1,11 +1,11 @@
-// What a person types while a handoff runs: the typing is held and goes in when the handoff is done, so it is neither lost nor sent into a
+// What a person types while a handover runs: the typing is held and goes in when the handover is done, so it is neither lost nor sent into a
 // session that is about to be cleared. These lines carry the name themselves: the host puts it only in
 // front of log lines and command replies.
 
 import type { State } from './state'
 
-export const HELD = 'sweet-spot: a handoff is in progress, your message is held and goes in when it is done'
-export const NO_ATTACHMENTS = 'sweet-spot: a handoff is in progress and attachments cannot be held, send the message again when it is done'
+export const HELD = 'sweet-spot: a handover is in progress, your message is held and goes in when it is done'
+export const NO_ATTACHMENTS = 'sweet-spot: a handover is in progress and attachments cannot be held, send the message again when it is done'
 
 type Typing = { text: string; attachments?: readonly unknown[]; origin: { kind: string } }
 

@@ -13,8 +13,11 @@ from three layers, each a function that registers answers with `on`:
 - `withMod` records what the mod shows: toasts, log lines, debug lines, the command it registers.
 - `sessionWith` is what the mod reads at a stop: context size, window, turn count, running agents, rate limits. It also brings a clock
   (`mock.clock`), so a test moves time on and lets what is due run (`clock.advance`, `clock.settle`).
-- `hostWith` is the session as a handoff touches it: the command list, the commands that run, the files, the store, `/clear` and the
-  submit. Each step lands in `host.steps`, so a test can say what happened in what order (`['run handoff …', 'run clear', 'submit …']`).
+- `hostWith` is the session as a handoff touches it: the command list, the commands that run, the files, the store, `/clear`, the
+  submit, `$.model.fork`, `$.session.compact` and `tool.call`. Each step lands in `host.steps`, so a test can say what happened in what order
+  (`['run handoff …', 'run clear', 'submit …']`, or `['compact']`). A compact answers with `{ messages }`, `{ skip }` or a refusal;
+  without a setting it refuses, as a headless session does. `tool.call` answers the results a test queues, such as the one the host gives
+  after Esc at a permission prompt.
 
 On top sit the moments a test is about: `pause` (an answer ends), `reachThreshold` (a pause past the threshold, with the handoff under
 way), `commandTurnEnds` (the command's turn ends with an answer), `typeInto` (a person types).
@@ -28,6 +31,8 @@ way), `commandTurnEnds` (the command's turn ends with an answer), `typeInto` (a 
 - **What is measured and what is not.** `hostWith` copies what was measured: `command.run` settles before the turn it starts, and two
   commands can share a short name. The rest is how the host is believed to behave; where a belief is not obvious, the code says so at the
   place. host-behaviour.md says how sure each one is.
+- **A refusal has the engine's words, not the host's.** The test engine hands the mod its own text when a hook refuses a compact, so the
+  host's wording for Esc ("Compaction canceled.") cannot be set through the fake. The test of that calls the way with an `Io` of its own.
 - **What a test cannot do.** A test under `hooks/` can import only relative paths and `claude-code`; it cannot read the repository's
   files. Checks that compare the code with `plugin.json` or the README run outside the host, in `docs/src/check.py`. A delayed call does
   not fire in a headless run either; a test waits for what it started.

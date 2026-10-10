@@ -6,7 +6,8 @@ import { endTurn, hostWith, pause, sessionWith, startSession, startTurn, stop, w
 // config.ts differ, or when either changes alone. The host checks type and `min` of plugin.json before the mod loads; a test cannot
 // get a number below the minimum past it, so those rejections are tested on `configOf` directly. The settings line shows from `info` on,
 // so the log level is set: without it the test would check nothing.
-const SETTINGS = 'info: settings: threshold 200000, dry_run off, min gap 10 minutes and 5 turns, handoff command none, log level info'
+const SETTINGS =
+  'info: settings: threshold 200000, dry_run off, min gap 10 minutes and 5 turns, method internal-handoff, fallback builtin-compact, log level info'
 
 test('the settings the mod runs with are the defaults of plugin.json', async ($, on) => {
   const seen = withMod(on)
@@ -32,13 +33,22 @@ test(
 
 test(
   'settings that are set show in the same line',
-  { options: { threshold: 150_000, dry_run: false, min_gap_minutes: 0, min_gap_turns: 2, handoff_command: 'claude-mem:handoff' } },
+  {
+    options: {
+      threshold: 150_000,
+      dry_run: false,
+      min_gap_minutes: 0,
+      min_gap_turns: 2,
+      handoff_method: 'external-command',
+      handoff_command: 'claude-mem:handoff',
+    },
+  },
   async ($, on) => {
     const seen = withMod(on)
     hostWith(on, { logLevel: 'info' })
     await startSession($)
     expect(seen.logs).toEqual([
-      'info: settings: threshold 150000, dry_run off, min gap 0 minutes and 2 turns, handoff command "claude-mem:handoff", log level info',
+      'info: settings: threshold 150000, dry_run off, min gap 0 minutes and 2 turns, method external-command, fallback builtin-compact, handoff command "claude-mem:handoff", log level info',
     ])
   },
 )

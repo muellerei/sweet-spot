@@ -44,7 +44,9 @@ python3 docs/src/check.py
 sh docs/src/build.sh && git diff --exit-code -- docs
 ```
 
-`check.py` compares the numbers and versions written in more than one place, keeps the diagnostic variable inside the code that owns
+`check.py` compares the numbers and versions written in more than one place, compares the choices and defaults of `handoff_method` and
+`handoff_fallback` in `plugin.json` with `METHODS` and `DEFAULTS` in `config.ts`, keeps the README and `plugin.json` free of the word the host
+uses for the call that writes the handoff, keeps the diagnostic variable inside the code that owns
 it, and keeps these pages free of anything a reader of the repository cannot follow. `build.sh` rebuilds the pictures; the diff after it
 must be empty.
 

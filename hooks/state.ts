@@ -1,12 +1,13 @@
 // What the mod keeps between one stop and the next. One object, made afresh each time the plugin loads: a reload (a changed setting, a
 // hot reload) starts from nothing, and what must survive a reload does not belong here.
 
+import type { CompactCheck } from './compact-check'
 import type { Attempt } from './decide'
 import type { LevelMemo } from './log'
 import { freshPairing, type Pairing } from './pairing'
 
 // How the awaited turn of the handoff command ended: with its answer, or without one and why.
-export type Ended = { answer: string } | { failure: string; cancelled?: true }
+export type Ended = { answer: string; rejected?: true } | { failure: string; cancelled?: true }
 
 // The log level of the latest read (`LevelMemo`), which every handler that logs makes at its start; a line written outside a handler, as
 // from a timer, goes by it.
@@ -29,7 +30,8 @@ export type State = LevelMemo & {
   // is no pause to act on (nor to report as postponed), whatever the gap says.
   handingOver: boolean
   // Set while the end of the command's turn is awaited; `own` is the first turn that starts after the wait began: the command's.
-  turnWait: { own: string | undefined; end: (result: Ended) => void } | undefined
+  // `rejected`: the user declined a permission in that turn (Esc or "No"), seen by the `tool.call` hook.
+  turnWait: { own: string | undefined; rejected?: true; end: (result: Ended) => void } | undefined
   // What the person typed while the handoff ran, in order, and has not been put in yet: what went into the first message (or the pending
   // one) is taken out.
   held: string[]
@@ -43,6 +45,9 @@ export type State = LevelMemo & {
   redelivering: boolean
   // Set once a handoff has succeeded: the context it left, and how many pauses of the fresh session were logged against it. Only a debug line reads it.
   afterHandoff: { before: number; pauses: number } | undefined
+  // Whether the last compact was enough, found out at the pauses after it (`compact-check.ts`). Not kept across a reload, like the rest: at worst
+  // one compact more follows.
+  compactCheck: CompactCheck
 }
 
 export const freshState = (): State => ({
@@ -57,6 +62,7 @@ export const freshState = (): State => ({
   pendingIn: undefined,
   redelivering: false,
   afterHandoff: undefined,
+  compactCheck: undefined,
   logLevel: 'off',
   badLogLevel: undefined,
 })

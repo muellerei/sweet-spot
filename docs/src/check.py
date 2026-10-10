@@ -94,6 +94,28 @@ else:
     for key in sorted(known - settings):
         problems.append(f'plugin.json: userConfig lacks {key!r}, which hooks/config.ts has a default for')
 
+# The ways to hand over are written once, as METHODS in config.ts; the choices plugin.json offers and their defaults must be those.
+config_ts = read('hooks', 'config.ts')
+methods = re.search(r"export const METHODS = \[([^\]]*)\] as const", config_ts)
+if not methods:
+    problems.append('hooks/config.ts: no METHODS found, the pattern no longer matches the code')
+else:
+    ways = re.findall(r"'([^']+)'", methods.group(1))
+    user_config = json.loads(read('.claude-plugin', 'plugin.json')).get('userConfig', {})
+    for key, wanted in (('handoff_method', ways), ('handoff_fallback', ways + ['none'])):
+        offered = user_config.get(key, {}).get('options')
+        if sorted(offered or []) != sorted(wanted):
+            problems.append(f'plugin.json: {key} offers {offered!r}, METHODS in hooks/config.ts gives {sorted(wanted)!r}')
+        camel = ''.join(part.capitalize() if i else part for i, part in enumerate(key.split('_')))
+        default = re.search(camel + r": '([^']*)'", defaults.group(1)) if defaults else None
+        if not default or user_config.get(key, {}).get('default') != default.group(1):
+            problems.append(f'plugin.json: {key} has default {user_config.get(key, {}).get("default")!r}, DEFAULTS in hooks/config.ts has {default.group(1) if default else None!r}')
+
+# The README and plugin.json are for people who use the mod: the host's word for the call that writes the handoff is not theirs.
+for path in (('README.md',), ('.claude-plugin', 'plugin.json')):
+    if re.search(r'fork', read(*path), re.I):
+        problems.append(f"{'/'.join(path)}: names the fork; users read 'handoff', 'handover' and 'compact'")
+
 if problems:
     print('\n'.join(problems))
     sys.exit(1)

@@ -3,7 +3,7 @@ import { test, expect } from 'claude-code/testing'
 import {
   commandTurnEnds,
   endTurn,
-  forkAnswer,
+  modelForkAnswer,
   hostWith,
   reachThreshold,
   sessionWith,
@@ -65,12 +65,12 @@ test('a handoff through the command calls neither http nor a process, writes not
   expect(calls).toEqual([])
 })
 
-// The fork is the model's to run, and its answer is submitted: nothing else leaves the session, and the prompt file is only read.
-test('a handoff through a fork calls neither http nor a process, and writes nothing', { options: { dry_run: false } }, async ($, on) => {
+// The internal handoff is the model's to run, and its answer is submitted: nothing else leaves the session, and the prompt file is only read.
+test('a handoff through an internal handoff calls neither http nor a process, and writes nothing', { options: { dry_run: false } }, async ($, on) => {
   const calls = listenForOutside(on)
   withMod(on)
   const world = sessionWith(on)
-  const host = hostWith(on, { commands: [], fork: forkAnswer('notes') })
+  const host = hostWith(on, { commands: [], modelFork: modelForkAnswer('notes') })
   await reachThreshold($, world)
   expect(host.steps).toHaveLength(2)
   expect(calls).toEqual([])

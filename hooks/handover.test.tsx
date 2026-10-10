@@ -3,6 +3,7 @@ import { test, expect } from 'claude-code/testing'
 import { ASK_FOR_PATH, firstMessage } from './handoff'
 import {
   commandTurnEnds,
+  DRY_RUN,
   endTurn,
   FILE,
   hostWith,
@@ -22,7 +23,7 @@ import {
   HANDED,
   failure,
   fellBack,
-  FORK_ALSO,
+  INTERNAL_HANDOFF_ALSO_FAILED,
 } from './test-support'
 
 // The handoff through the user's own command, with the dry run off: the command runs as a turn of its own, the end of that turn is
@@ -57,7 +58,7 @@ test('the command is started after the stop has returned, not inside it', LIVE, 
   expect(host.steps).toEqual([RUN])
 })
 
-test('the dry run starts nothing', async ($, on) => {
+test('the dry run starts nothing', DRY_RUN, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on)
@@ -79,7 +80,11 @@ test('without a command of that name nothing runs, and the reason is said', LIVE
   const host = hostWith(on, { commands: ['claude-mem:handoff', 'x:handoff'] })
   await reachThreshold($, world)
   expect(host.steps).toEqual([])
-  expect(seen.logs).toEqual([DUE, fellBack('the command "handoff" does not exist'), failure(`the command "handoff" does not exist; ${FORK_ALSO}`)])
+  expect(seen.logs).toEqual([
+    DUE,
+    fellBack('the command "handoff" does not exist'),
+    failure(`the command "handoff" does not exist; ${INTERNAL_HANDOFF_ALSO_FAILED}`),
+  ])
 })
 
 test('a stop before the end of its turn waits for that end, and the end is not the one the handoff awaits', LIVE, async ($, on) => {
@@ -245,12 +250,13 @@ const failing: [string, (host: ReturnType<typeof hostWith>) => void, (w: World, 
   ],
 ]
 
-// A handoff the command did not give is tried with a fork next (the tests of that are in their own file); here the fork gives nothing.
+// A handoff the command did not give is tried with the internal handoff next (the tests of that are in their own file); here the internal handoff gives nothing.
 // An interrupted turn is the user's own stop and is said as a cancel.
 const notReplaced = ['/clear fails', 'the environment cannot be read', 'its turn is interrupted']
 for (const [name, arrange, act, own, steps] of failing) {
   const replaced = !notReplaced.includes(name)
-  const reason = replaced ? `${own}; ${FORK_ALSO}` : own
+  // A failure at /clear leaves the fallback nothing to try: it needs /clear too, and the reason says so.
+  const reason = replaced ? `${own}; ${INTERNAL_HANDOFF_ALSO_FAILED}` : name === '/clear fails' ? `${own}; the fallback needs /clear too` : own
   test(`when ${name}, the session is left as it was, the reason is said, and a later stop tries again`, NO_GAP, async ($, on) => {
     const seen = withMod(on)
     const world = sessionWith(on)
@@ -259,7 +265,7 @@ for (const [name, arrange, act, own, steps] of failing) {
     await reachThreshold($, world)
     await act(world, $)
     expect(host.steps).toEqual(steps)
-    const ending = name === 'its turn is interrupted' ? 'handoff cancelled, the session is as it was' : failure(reason)
+    const ending = name === 'its turn is interrupted' ? 'cancelled, the session is as it was' : failure(reason)
     const said = replaced ? [DUE, fellBack(own), ending] : [DUE, ending]
     expect(seen.logs).toEqual(said)
     expect(seen.toasts).toEqual(said)

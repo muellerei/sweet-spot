@@ -21,7 +21,7 @@ import {
   type SessionWorld,
   type TestEngine,
   failure,
-  FORK_ALSO,
+  INTERNAL_HANDOFF_ALSO_FAILED,
   PENDING,
   submits,
 } from './test-support'
@@ -170,7 +170,7 @@ test('redeliver in a session other than the one the handoff was meant for submit
   await world.clock.settle()
   expect(submits(host)).toEqual([`submit ${FIRST}`])
   expect(host.store.get(PENDING)).toBe(FIRST)
-  expect(seen.logs.at(-1)).toBe('handoff failed, the message belongs to another session than this one')
+  expect(seen.logs.at(-1)).toBe('handover failed, the message belongs to another session than this one')
 })
 
 test('a second redelivery while the first is under way submits nothing more', LIVE, async ($, on) => {
@@ -192,7 +192,7 @@ test('redeliver while a handoff is under way is refused, as the message is not y
   host.during['run clear'] = async () => void (said = await answered(runRelay($, 'redeliver')))
   await reachThreshold($, world)
   await commandTurnEnds($, world, `HANDOFF_PATH: ${FILE}`)
-  expect(said).toBe('a handoff is under way, try again when it is done')
+  expect(said).toBe('a handover is in progress, try again when it is done')
   expect(submits(host)).toEqual([`submit ${FIRST}`])
 })
 
@@ -279,11 +279,11 @@ const reasons: [string, string, (host: Host) => void, (world: SessionWorld, $: T
     'old',
   ],
 ]
-// Where the command gave no handoff the fork was tried, and failed here: the last stage is `fork` and the reason names both.
+// Where the command gave no handoff the internal handoff was tried, and failed here: the last stage is `model-fork` and the reason names both.
 const missing = ['command', 'turn', 'path', 'read']
 for (const [name, first, arrange, act, own, sessionId] of reasons) {
-  const stage = missing.includes(first) ? 'fork' : first
-  const reason = stage === 'fork' ? `${own}; ${FORK_ALSO}` : own
+  const stage = missing.includes(first) ? 'model-fork' : first
+  const reason = stage === 'model-fork' ? `${own}; ${INTERNAL_HANDOFF_ALSO_FAILED}` : stage === 'clear' ? `${own}; the fallback needs /clear too` : own
   test(`when ${name}, the reason is kept in the store with the stage and the session`, NO_GAP, async ($, on) => {
     const seen = withMod(on)
     const world = sessionWith(on)
@@ -292,7 +292,7 @@ for (const [name, first, arrange, act, own, sessionId] of reasons) {
     await reachThreshold($, world)
     await act(world, $)
     expect(host.store.get('failure')).toEqual({ at: world.clock.now(), sessionId, stage, reason })
-    expect(seen.logs.at(-1)).toBe(stage === 'cancelled' ? 'handoff cancelled, the session is as it was' : failure(reason))
+    expect(seen.logs.at(-1)).toBe(stage === 'cancelled' ? 'cancelled, the session is as it was' : failure(reason))
   })
 }
 
@@ -317,7 +317,7 @@ test('a reason that cannot be written to the store does not change what is said 
   const world = sessionWith(on)
   const host = hostWith(on, { commands: [], failStore: ['set:failure'] })
   await reachThreshold($, world)
-  expect(seen.logs.at(-1)).toBe(failure(`the command "handoff" does not exist; ${FORK_ALSO}`))
+  expect(seen.logs.at(-1)).toBe(failure(`the command "handoff" does not exist; ${INTERNAL_HANDOFF_ALSO_FAILED}`))
   expect(host.store.has('failure')).toBe(false)
 })
 

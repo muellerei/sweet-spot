@@ -13,11 +13,16 @@ running (background tasks, one-shot timers), and `turn.complete` says how the tu
 **The judgment.** `decide` in `decide.ts` answers from a snapshot whether to hand over now, postpone (and why), or do nothing. It is
 pure: the caller takes the snapshot, acts on the answer and keeps the record of the last attempt (`atPause` in `register.tsx`).
 
-**The handoff.** `handOver` in `register.tsx` starts it once the stop has returned. From then on typing is held (`hold.ts`), and
-`carryOut` in `relay.ts` runs the chain: the user's command as a turn of its own, the file its answer names, `/clear`, and the handoff
-submitted as the first message of the fresh session (`throughChain`, `throughCommand`, `deliver`). When the command gives no handoff, a
-fork of the history writes it instead (`throughFork`). How far a failed handoff got, and so what is left to put right, is the `stage`
-of the type `Failure`.
+**The handover.** `handOver` in `register.tsx` starts it once the stop has returned. From then on typing is held (`hold.ts`), and
+`carryOut` in `relay.ts` runs `throughMethods`: the main method first (`handoff_method`), then, where it failed before it changed the
+session, the fallback (`handoff_fallback`). There are three ways. `throughCommand`: the user's command as a turn of its own, the file its
+answer names, `/clear`, and the handoff submitted as the first message of the fresh session (`deliver`). `throughInternalHandoff`: a
+`$.model.fork` call writes the handoff, which `deliver` then submits the same way. `throughBuiltinCompact`: Claude Code's own `/compact`,
+after which the session stays and nothing is cleared or submitted. How far a failed run got, and so what is left to put right, is the
+`stage` of the type `Failure`; `FALLBACK_STAGES` in `relay.ts` is the one list of the stages after which the session is as it was and a
+fallback may follow. `cancelled` (the user's own stop), `submit` and `error` never fall back. After a failure at `clear` a fallback that
+needs `/clear` too is not tried. A compact that left the context above the threshold is marked (`compact-check.ts`) and not repeated
+until a pause is below the threshold again; the mark is set and cleared at the pause, before `decide` judges (`atPause`).
 
 **Afterwards.** What was typed during the handoff goes in after it (`release`). A message that did not reach the fresh session stays in
 the store, and `/sweet-spot redeliver` submits it, into the session the `/clear` made and no other (`redeliver`).
@@ -43,6 +48,12 @@ Each is explained in a comment at the place named.
 - Typing is held first, before anything is awaited (the `prompt.submit` handler in `register`).
 - The wait for the command's turn is set up before the command runs, and only the first turn that starts after it is the command's
   (`waitForTurnEnd`, `startOfTurn`, `endOfTurn` in `relay.ts`).
+- `builtin-compact` needs the stop before `turn.complete`: the host refuses a compact from inside the stop, and the mod judges only once
+  both are in. The "either order" of `pairing.ts` does not hold for it (`throughBuiltinCompact`; host-behaviour, `$.session.compact`).
+- The compact mark is set or cleared before `decide` judges and the first way is named, or the first pause after a compact that was not
+  enough would compact once more to no effect (`atPause`, `firstMethod` in `compact-check.ts`).
+- The `tool.call` hook only watches: it calls `next(e)`, returns its result unchanged, looks only while the command's turn is awaited,
+  and catches its own errors (`noteToolResult` in `relay.ts`).
 - The last look at the held typing and the end of holding are one step (`release`).
 - The handoff is in the store before `/clear`, until the fresh session has it (`deliver`).
 - The same session id after `/clear` means the handoff failed (`deliver`).

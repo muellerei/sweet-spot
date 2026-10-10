@@ -49,7 +49,7 @@ export const withHeld = (message: string, held: readonly string[]): string =>
 
 export const firstMessage = (handoff: string): string => `Handoff from the previous session. Read it and carry on with the next step.\n\n${handoff}`
 
-// The prompt the fork is asked when the user has none of their own. The fork sees the whole history and has no tools, so it only has to say
+// The prompt the internal handoff asks the model when the user has none of their own. The `$.model.fork` call sees the whole history and has no tools, so it only has to say
 // what the next session needs; the length is a guide, and a prompt file of the user's can set another.
 export const DEFAULT_PROMPT = [
   'Write a handoff for the session that takes over this work. It starts with no memory of this conversation and must be able to carry on from your text alone.',
@@ -78,25 +78,34 @@ export const promptPath = (home: string): string => `${withoutTrailingSeparator(
 export const promptFrom = (file: unknown): string => (typeof file === 'string' && file.trim() !== '' ? file.trim() : DEFAULT_PROMPT)
 
 // `$.model.fork` cannot be cancelled, so the wait for it is limited here; an answer after the limit is not used.
-export const FORK_TIMEOUT_MS = 3 * 60_000
+export const MODEL_FORK_TIMEOUT_MS = 3 * 60_000
 
-export type ForkAnswer = { isAnswered: true; text: string } | { isAnswered: false; reason: string; status?: number | null }
+// What the host says when the user presses Esc during `$.session.compact`; it puts `$.session.compact:` in front, so the text is searched for
+// in the refusal, not compared. A different wording makes Esc an ordinary refusal and the fallback runs after the cancel.
+export const COMPACT_CANCELLED = 'Compaction canceled.' // host wording, measured 2.1.296
 
-type NoFork = Extract<ForkAnswer, { isAnswered: false }>
+// How a tool result begins when the user pressed Esc or "No" at the permission prompt (a rule's denial reads differently). Searched for at the start
+// of the result's text, which goes on with the host's own words, or with the user's hint. A different wording makes the decline unseen, and the
+// run falls back after Esc as it did before.
+export const USER_REJECTED = "The user doesn't want to proceed with this tool use." // host wording, measured 2.1.296
 
-// The reasons a fork gives nothing for that the mod knows, each in words for a person. The one list both the words and the log's kind read.
-const FORK_REASONS = {
-  'nothing-to-fork': () => 'there is nothing to fork yet (a fresh or just cleared session)',
+export type ModelForkAnswer = { isAnswered: true; text: string } | { isAnswered: false; reason: string; status?: number | null }
+
+type ModelForkUnanswered = Extract<ModelForkAnswer, { isAnswered: false }>
+
+// The reasons `$.model.fork` gives nothing for that the mod knows, each in words for a person. The one list both the words and the log's kind read.
+const MODEL_FORK_REASONS = {
+  'nothing-to-fork': () => 'there is no conversation yet to write a handoff from',
   'api-error': answer => `the API failed${typeof answer.status === 'number' ? ` (status ${answer.status})` : ''}`,
-  'empty-reply': () => 'the fork replied with nothing',
-  aborted: () => 'the fork was aborted',
-  timeout: () => `the fork did not answer within ${FORK_TIMEOUT_MS / 60_000} minutes`,
-} satisfies Record<string, (answer: NoFork) => string>
+  'empty-reply': () => 'the model replied with nothing',
+  aborted: () => 'writing the handoff was aborted',
+  timeout: () => `the model did not answer within ${MODEL_FORK_TIMEOUT_MS / 60_000} minutes`,
+} satisfies Record<string, (answer: ModelForkUnanswered) => string>
 
-const known = (reason: string): reason is keyof typeof FORK_REASONS => Object.hasOwn(FORK_REASONS, reason)
+const known = (reason: string): reason is keyof typeof MODEL_FORK_REASONS => Object.hasOwn(MODEL_FORK_REASONS, reason)
 
-// The kind of reason a fork gave nothing for, from a fixed set: a reason the mod does not know is the host's own words and stays out.
-export const forkKind = (answer: NoFork): string => (known(answer.reason) ? answer.reason : 'other')
+// The kind of reason an internal handoff gave nothing for, from a fixed set: a reason the mod does not know is the host's own words and stays out.
+export const modelForkKind = (answer: ModelForkUnanswered): string => (known(answer.reason) ? answer.reason : 'other')
 
-// What a fork that gave no handoff says, in words for a person; a reason the mod does not know as the host gave it.
-export const forkFailure = (answer: NoFork): string => (known(answer.reason) ? FORK_REASONS[answer.reason](answer) : answer.reason)
+// What a `$.model.fork` call that gave no handoff says, in words for a person; a reason the mod does not know as the host gave it.
+export const modelForkFailure = (answer: ModelForkUnanswered): string => (known(answer.reason) ? MODEL_FORK_REASONS[answer.reason](answer) : answer.reason)

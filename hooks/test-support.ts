@@ -109,9 +109,15 @@ export type Host = {
   logLevelFails: boolean
   // In order, what the mod did to the session: `run <command> <args>` and `submit <text>`.
   steps: string[]
-  // What a fork of the history answers with, or that it never answers or throws; `forked` lists the prompts it was asked.
-  fork: Record<string, unknown> | 'hang' | 'throw'
-  forked: string[]
+  // What a `$.model.fork` call answers with, or that it never answers or throws; `modelForkPrompts` lists the prompts it was asked.
+  modelFork: Record<string, unknown> | 'hang' | 'throw'
+  modelForkPrompts: string[]
+  // What a `$.session.compact` call answers with: `{ messages }`, `{ skip }`, or `{ throws }` for a refusal. A headless session refuses every
+  // call, which is what the default does. The engine hands the mod its own words for a refusal, not the hook's, so the host's wording cannot be
+  // set here: the test of the user's Esc calls the way with its own `Io`. Each call is the step `compact`.
+  compact: Record<string, unknown>
+  // What the next `tool.call`s answer with, in order; once they are used up a call answers with an ordinary result.
+  toolResults: Record<string, unknown>[]
   // The session's id, which a /clear changes unless `clearKeepsSession` is set (a /clear that returned without effect).
   sessionId: string
   clearKeepsSession: boolean
@@ -120,7 +126,7 @@ export type Host = {
   // What the store holds, and the store calls that fail, as `<op>:<key>` (`set:failure`; `*` for any key).
   store: Map<string, unknown>
   failStore: string[]
-  // Run while a step is under way, for what a person does in the middle of a handoff: the step is `run <command>`, `fork`, `submit` or `set <store key>`.
+  // Run while a step is under way, for what a person does in the middle of a handoff: the step is `run <command>`, `model.fork`, `submit` or `set <store key>`.
   // `read log level` holds up one read of the log level, for a read that comes back after a later one.
   during: Record<string, () => Promise<void>>
 }
@@ -149,8 +155,10 @@ export const hostWith = (on: TestOn, host: Partial<Host> = {}) => {
     envError: undefined,
     logLevel: undefined,
     logLevelFails: false,
-    fork: { isAnswered: false, reason: 'nothing-to-fork' },
-    forked: [],
+    modelFork: { isAnswered: false, reason: 'nothing-to-fork' },
+    modelForkPrompts: [],
+    compact: { throws: 'not available in a headless session' },
+    toolResults: [],
     steps: [],
     sessionId: 'old',
     sessionIdFails: false,
@@ -198,12 +206,19 @@ export const hostWith = (on: TestOn, host: Partial<Host> = {}) => {
     if (h.envError !== undefined) return { deny: h.envError }
     return { value: e.name === 'HOME' ? h.home : h.tmpdir }
   })
+  on('tool.call', async () => (h.toolResults.shift() ?? { result: 'ok', text: 'ok' }) as never)
+  on('session.compact', async () => {
+    h.steps.push('compact')
+    await once(h, 'compact')
+    if ('throws' in h.compact) throw new Error(String(h.compact.throws))
+    return h.compact as never
+  })
   on('model.fork', async (_, e) => {
-    h.forked.push(e.prompt)
-    await once(h, 'fork')
-    if (h.fork === 'hang') return new Promise<never>(() => {})
-    if (h.fork === 'throw') throw new Error('refused')
-    return { value: h.fork } as never
+    h.modelForkPrompts.push(e.prompt)
+    await once(h, 'model.fork')
+    if (h.modelFork === 'hang') return new Promise<never>(() => {})
+    if (h.modelFork === 'throw') throw new Error('refused')
+    return { value: h.modelFork } as never
   })
   // Assumed: a submit that gets through is answered with the text as it was sent.
   on('prompt.submit', async (_, e) => {
@@ -215,15 +230,35 @@ export const hostWith = (on: TestOn, host: Partial<Host> = {}) => {
   return h
 }
 
-// Most tests are about the user's own command, so they name it; the default is none.
-export const LIVE = { options: { dry_run: false, handoff_command: 'handoff' } }
+// Most tests are about the user's own command, so they name it and keep the mod's own handoff as the fallback; the default is the internal handoff alone.
+export const LIVE = { options: { dry_run: false, handoff_method: 'external-command', handoff_fallback: 'internal-handoff', handoff_command: 'handoff' } }
 // The dry run, as the tests about what it reports want it; the default is off.
 export const DRY_RUN = { options: { dry_run: true } }
 export const NO_GAP = { options: { ...LIVE.options, min_gap_minutes: 0, min_gap_turns: 0 } }
+// The way to hand over and the fallback, as the two settings name them; `extra` adds any other setting.
+export const methods = (method: string, fallback: string, extra: object = {}) => ({
+  options: { dry_run: false, handoff_method: method, handoff_fallback: fallback, handoff_command: 'handoff', ...extra },
+})
+export const COMPACT_ONLY = methods('builtin-compact', 'none')
 export const FILE = '/var/T/handoff-1.md'
 export const NOTES = 'goal: finish the parser'
-// What a fork of the history answers with when it gives a handoff.
-export const forkAnswer = (text: string) => ({ isAnswered: true, text, usage: {} })
+// What the host says to a compact: a hook's veto, and a compaction done.
+export const COMPACT_VETO = { skip: 'probe veto' }
+// What a tool call answers with after the person pressed Esc or "No" at the permission prompt, with a hint typed after "No", and after a
+// rule denied it (measured against 2.1.296). The words are spelled out here: a test that imported them from the mod would never notice
+// the mod's copy drift from the host's.
+const NOT_PROCEED = "The user doesn't want to proceed with this tool use."
+export const REJECTED_BY_USER = { isError: true, result: NOT_PROCEED, text: `${NOT_PROCEED} The tool use was rejected. STOP what you are doing.` }
+export const REJECTED_WITH_HINT = {
+  isError: true,
+  result: NOT_PROCEED,
+  text: `${NOT_PROCEED} To tell you how to proceed, the user said: write it to /var/T instead`,
+}
+export const DENIED_BY_RULE = { isError: true, result: 'denied', text: 'Permission to use Bash with command touch /var/T/x has been denied.' }
+export const COMPACT_DONE = { messages: [{ role: 'user', text: 'summary', toolUses: [] }] }
+// What a `$.model.fork` call answers with when it gives a handoff.
+export const modelForkAnswer = (text: string) => ({ isAnswered: true, text, usage: {} })
+export const ANSWERED = modelForkAnswer('goal: finish the parser\nnext: the lexer')
 
 export type SessionWorld = ReturnType<typeof sessionWith>
 
@@ -260,8 +295,12 @@ export const runRelay = ($: TestEngine, args: string) => $.command.run({ command
 export const MINUTE = 60_000
 export const DUE = 'handing over now, context 210000 tokens'
 export const HANDED = 'handed over, the fresh session carries on from the handoff'
-export const failure = (reason: string) => `handoff failed, ${reason}`
-export const fellBack = (reason: string) => `the handoff through the command failed (${reason}), handing over with a fork of the history instead`
-export const FORK_ALSO = 'the fork gave no handoff: there is nothing to fork yet (a fresh or just cleared session)'
+export const failure = (reason: string) => `handover failed, ${reason}`
+// The change of way from the user's command to the mod's own handoff, and the other way round.
+export const fellBack = (reason: string) => `the handoff through the command failed (${reason}), the mod writes the handoff instead`
+export const fellBackToCommand = (reason: string) => `the handoff the mod writes failed (${reason}), the command is used instead`
+export const COMPACTING = 'compacting now, context 210000 tokens'
+export const COMPACTED = 'compacted, the session carries on'
+export const INTERNAL_HANDOFF_ALSO_FAILED = 'the mod could not write the handoff: there is no conversation yet to write a handoff from'
 export const PENDING = 'pending:old'
 export const submits = (host: Host) => host.steps.filter(s => s.startsWith('submit '))

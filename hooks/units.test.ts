@@ -2,7 +2,7 @@ import { test, expect } from 'claude-code/testing'
 
 import { DEFAULTS, configOf } from './config'
 import { activeTasks, decide, effectiveThreshold, oneShots, type Decision, type Snapshot } from './decide'
-import { DEFAULT_PROMPT, ASK_FOR_PATH, firstMessage, forkFailure, forkKind, handoffPath, newestHandoff, promptFrom, promptPath } from './handoff'
+import { DEFAULT_PROMPT, ASK_FOR_PATH, firstMessage, modelForkFailure, modelForkKind, handoffPath, newestHandoff, promptFrom, promptPath } from './handoff'
 import { endSeen, freshPairing, judgeable, stopSeen, turnStarted } from './pairing'
 import { reportOf } from './report'
 
@@ -13,7 +13,15 @@ const rejected = (options: Record<string, unknown>) => {
 
 // Typed on purpose: the test falls when a default changes in config.ts or in plugin.json (see register.test.tsx).
 test('configOf: nothing set gives the defaults, and the defaults are these', async () => {
-  const expected = { threshold: 200_000, dryRun: false, minGapMinutes: 10, minGapTurns: 5, handoffCommand: '' }
+  const expected = {
+    threshold: 200_000,
+    dryRun: false,
+    minGapMinutes: 10,
+    minGapTurns: 5,
+    handoffMethod: 'internal-handoff',
+    handoffFallback: 'builtin-compact',
+    handoffCommand: '',
+  }
   expect(DEFAULTS).toEqual(expected)
   expect(configOf({})).toEqual({ ok: true, config: expected })
 })
@@ -22,7 +30,15 @@ test('configOf: valid values are taken as they are', async () => {
   const result = configOf({ threshold: 130_000, dry_run: false, min_gap_minutes: 0, min_gap_turns: 0, handoff_command: 'claude-mem:handoff' })
   expect(result).toEqual({
     ok: true,
-    config: { threshold: 130_000, dryRun: false, minGapMinutes: 0, minGapTurns: 0, handoffCommand: 'claude-mem:handoff' },
+    config: {
+      threshold: 130_000,
+      dryRun: false,
+      minGapMinutes: 0,
+      minGapTurns: 0,
+      handoffMethod: 'internal-handoff',
+      handoffFallback: 'builtin-compact',
+      handoffCommand: 'claude-mem:handoff',
+    },
   })
 })
 
@@ -70,6 +86,58 @@ test('configOf: the handoff command is the name as the command list shows it, wi
 // Empty means no command of your own: the mod writes the handoff itself. Blanks alone are the same, not a name.
 test('configOf: an empty handoff command means none', async () => {
   for (const raw of ['', '  ']) expect([raw, configOf({ handoff_command: raw })]).toMatchObject([raw, { ok: true, config: { handoffCommand: '' } }])
+})
+
+test('configOf: each valid value of the main method and of the fallback is taken', async () => {
+  const command = { handoff_command: 'handoff' }
+  for (const method of ['internal-handoff', 'external-command', 'builtin-compact']) {
+    expect([method, configOf({ handoff_method: method, ...command })]).toMatchObject([method, { ok: true, config: { handoffMethod: method } }])
+  }
+  const pairs = [
+    ['internal-handoff', 'none'],
+    ['internal-handoff', 'external-command'],
+    ['internal-handoff', 'builtin-compact'],
+    ['external-command', 'none'],
+    ['external-command', 'internal-handoff'],
+    ['external-command', 'builtin-compact'],
+    ['builtin-compact', 'none'],
+    ['builtin-compact', 'internal-handoff'],
+    ['builtin-compact', 'external-command'],
+  ]
+  for (const [method, fallback] of pairs) {
+    const result = configOf({ handoff_method: method, handoff_fallback: fallback, ...command })
+    expect([method, fallback, result]).toMatchObject([method, fallback, { ok: true, config: { handoffMethod: method, handoffFallback: fallback } }])
+  }
+})
+
+test('configOf: an unknown method or fallback is rejected with the field and the value, never replaced', async () => {
+  const table: [Record<string, unknown>, string][] = [
+    [{ handoff_method: 'clone' }, 'handoff_method: "clone" is not one of external-command, internal-handoff, builtin-compact'],
+    [{ handoff_method: 'none' }, 'handoff_method: "none" is not one of external-command, internal-handoff, builtin-compact'],
+    [{ handoff_method: 5 }, 'handoff_method: 5 is not one of external-command, internal-handoff, builtin-compact'],
+    [{ handoff_fallback: 'clone' }, 'handoff_fallback: "clone" is not one of external-command, internal-handoff, builtin-compact, none'],
+    [{ handoff_fallback: null }, 'handoff_fallback: null is not one of external-command, internal-handoff, builtin-compact, none'],
+  ]
+  for (const [options, error] of table) expect([options, rejected(options)]).toEqual([options, [error]])
+})
+
+test('configOf: external-command with no handoff_command is rejected, and the message names the field that asks for it', async () => {
+  const missing = (field: string) => `${field}: "external-command" needs handoff_command, which is empty`
+  expect(rejected({ handoff_method: 'external-command' })).toEqual([missing('handoff_method')])
+  expect(rejected({ handoff_fallback: 'external-command' })).toEqual([missing('handoff_fallback')])
+  expect(rejected({ handoff_method: 'external-command', handoff_command: '  ' })).toEqual([missing('handoff_method')])
+  expect(rejected({ handoff_method: 'external-command', handoff_fallback: 'internal-handoff', handoff_command: 'handoff' })).toEqual([])
+})
+
+test('configOf: the same value in both fields is no fallback', async () => {
+  for (const method of ['internal-handoff', 'external-command', 'builtin-compact']) {
+    const result = configOf({ handoff_method: method, handoff_fallback: method, handoff_command: 'handoff' })
+    expect([method, result]).toMatchObject([method, { ok: true, config: { handoffMethod: method, handoffFallback: 'none' } }])
+  }
+  // One field asks for the command, so the one message is about the main method, not twice.
+  expect(rejected({ handoff_method: 'external-command', handoff_fallback: 'external-command' })).toEqual([
+    'handoff_method: "external-command" needs handoff_command, which is empty',
+  ])
 })
 
 test('configOf: every rejected setting is named, not only the first', async () => {
@@ -233,20 +301,42 @@ test('oneShots: a timer that fires once counts, a recurring one does not', async
 })
 
 test('reportOf: every line names the context size', async () => {
-  const table: [Exclude<Decision, { kind: 'none' }>, string][] = [
-    [{ kind: 'defer', reason: 'subagent', tokens: 201_000 }, 'handoff postponed, a subagent is running, context 201000 tokens'],
-    [{ kind: 'defer', reason: 'background-task', tokens: 1 }, 'handoff postponed, a background task is running, context 1 tokens'],
-    [{ kind: 'defer', reason: 'one-shot-timer', tokens: 2 }, 'handoff postponed, a timer that fires once is set, context 2 tokens'],
-    [{ kind: 'defer', reason: 'min-gap', tokens: 3 }, 'handoff postponed, the minimum gap since the last attempt has not passed, context 3 tokens'],
-    [{ kind: 'dry-run', tokens: 210_000 }, 'dry run, would hand over now, context 210000 tokens'],
+  const table: [Parameters<typeof reportOf>[0], Parameters<typeof reportOf>[1], string][] = [
+    [{ kind: 'defer', reason: 'subagent', tokens: 201_000 }, 'internal-handoff', 'handoff postponed, a subagent is running, context 201000 tokens'],
+    [{ kind: 'defer', reason: 'background-task', tokens: 1 }, 'external-command', 'handoff postponed, a background task is running, context 1 tokens'],
+    [{ kind: 'defer', reason: 'one-shot-timer', tokens: 2 }, 'internal-handoff', 'handoff postponed, a timer that fires once is set, context 2 tokens'],
+    [
+      { kind: 'defer', reason: 'min-gap', tokens: 3 },
+      'external-command',
+      'handoff postponed, the minimum gap since the last attempt has not passed, context 3 tokens',
+    ],
+    [{ kind: 'defer', reason: 'subagent', tokens: 201_000 }, 'builtin-compact', 'compact postponed, a subagent is running, context 201000 tokens'],
+    [
+      { kind: 'defer', reason: 'min-gap', tokens: 3 },
+      'builtin-compact',
+      'compact postponed, the minimum gap since the last attempt has not passed, context 3 tokens',
+    ],
+    [{ kind: 'dry-run', tokens: 210_000 }, 'internal-handoff', 'dry run, would hand over now, context 210000 tokens'],
+    [{ kind: 'dry-run', tokens: 210_000 }, 'builtin-compact', 'dry run, would compact now, context 210000 tokens'],
     [
       { kind: 'dry-run', tokens: 360_000, forced: 'one-shot-timer' },
+      'external-command',
       'dry run, would hand over now, context 360000 tokens, although a timer that fires once is set (emergency brake)',
     ],
-    [{ kind: 'act', tokens: 210_000 }, 'handing over now, context 210000 tokens'],
-    [{ kind: 'act', tokens: 360_000, forced: 'subagent' }, 'handing over now, context 360000 tokens, although a subagent is running (emergency brake)'],
+    [{ kind: 'act', tokens: 210_000 }, 'external-command', 'handing over now, context 210000 tokens'],
+    [{ kind: 'act', tokens: 210_000 }, 'builtin-compact', 'compacting now, context 210000 tokens'],
+    [
+      { kind: 'act', tokens: 360_000, forced: 'subagent' },
+      'internal-handoff',
+      'handing over now, context 360000 tokens, although a subagent is running (emergency brake)',
+    ],
+    [
+      { kind: 'act', tokens: 360_000, forced: 'subagent' },
+      'builtin-compact',
+      'compacting now, context 360000 tokens, although a subagent is running (emergency brake)',
+    ],
   ]
-  for (const [decision, text] of table) expect(reportOf(decision)).toBe(text)
+  for (const [decision, method, text] of table) expect([method, reportOf(decision, method)]).toEqual([method, text])
 })
 
 test('handoffPath: the path comes from the HANDOFF_PATH line, the last one when an answer has several', async () => {
@@ -288,7 +378,7 @@ test('ASK_FOR_PATH: asks for the line handoffPath reads, and an answer that only
 })
 
 // The mod hands over at a size limit, so often in the middle of a task: the handoff has to carry what that task needs, whichever way it is written.
-test('the handoff request and the fork prompt both say the work may be in the middle of a task and ask for what it needs', async () => {
+test('the handoff request and the internal handoff prompt both say the work may be in the middle of a task and ask for what it needs', async () => {
   for (const request of [ASK_FOR_PATH, DEFAULT_PROMPT]) {
     expect(request).toContain('middle of a task')
     expect(request).toContain('files')
@@ -315,26 +405,26 @@ test('firstMessage: the handoff leads, with a line that says what it is and asks
   expect(firstMessage('the notes')).toBe('Handoff from the previous session. Read it and carry on with the next step.\n\nthe notes')
 })
 
-test('forkFailure: each reason a fork gives nothing is said in words, an unknown one as it is', async () => {
-  expect(forkFailure({ isAnswered: false, reason: 'nothing-to-fork' })).toBe('there is nothing to fork yet (a fresh or just cleared session)')
-  expect(forkFailure({ isAnswered: false, reason: 'api-error', status: 529 })).toBe('the API failed (status 529)')
-  expect(forkFailure({ isAnswered: false, reason: 'api-error', status: null })).toBe('the API failed')
-  expect(forkFailure({ isAnswered: false, reason: 'empty-reply' })).toBe('the fork replied with nothing')
-  expect(forkFailure({ isAnswered: false, reason: 'aborted' })).toBe('the fork was aborted')
-  expect(forkFailure({ isAnswered: false, reason: 'timeout' })).toBe('the fork did not answer within 3 minutes')
-  expect(forkFailure({ isAnswered: false, reason: 'something-new' })).toBe('something-new')
+test('modelForkFailure: each reason an internal handoff gives nothing is said in words, an unknown one as it is', async () => {
+  expect(modelForkFailure({ isAnswered: false, reason: 'nothing-to-fork' })).toBe('there is no conversation yet to write a handoff from')
+  expect(modelForkFailure({ isAnswered: false, reason: 'api-error', status: 529 })).toBe('the API failed (status 529)')
+  expect(modelForkFailure({ isAnswered: false, reason: 'api-error', status: null })).toBe('the API failed')
+  expect(modelForkFailure({ isAnswered: false, reason: 'empty-reply' })).toBe('the model replied with nothing')
+  expect(modelForkFailure({ isAnswered: false, reason: 'aborted' })).toBe('writing the handoff was aborted')
+  expect(modelForkFailure({ isAnswered: false, reason: 'timeout' })).toBe('the model did not answer within 3 minutes')
+  expect(modelForkFailure({ isAnswered: false, reason: 'something-new' })).toBe('something-new')
 })
 
-test('forkKind: a reason said in words is a kind of its own, any other one is other', async () => {
+test('modelForkKind: a reason said in words is a kind of its own, any other one is other', async () => {
   for (const reason of ['nothing-to-fork', 'api-error', 'empty-reply', 'aborted', 'timeout']) {
     const answer = { isAnswered: false as const, reason }
-    expect(forkFailure(answer)).not.toBe(reason)
-    expect(forkKind(answer)).toBe(reason)
+    expect(modelForkFailure(answer)).not.toBe(reason)
+    expect(modelForkKind(answer)).toBe(reason)
   }
   for (const reason of ['something-new', 'toString', 'constructor']) {
     const answer = { isAnswered: false as const, reason }
-    expect(forkFailure(answer)).toBe(reason)
-    expect(forkKind(answer)).toBe('other')
+    expect(modelForkFailure(answer)).toBe(reason)
+    expect(modelForkKind(answer)).toBe('other')
   }
 })
 
@@ -348,14 +438,14 @@ test('promptFrom: a prompt file with text is the prompt, trimmed; nothing readab
   for (const file of [undefined, null, '', ' \n\t', 42, {}]) expect(promptFrom(file)).toBe(DEFAULT_PROMPT)
 })
 
-// What the next session needs to carry on; the fork is told to keep all of it.
+// What the next session needs to carry on; the internal handoff is told to keep all of it.
 test('DEFAULT_PROMPT: asks for goal, state, decisions, failed attempts, next step, open questions and the end of the conversation, in about 4 to 6 thousand characters', async () => {
   for (const part of ['Goal', 'State', 'Decisions', 'failed', 'Next step', 'Open questions', 'word for word', '4,000 to 6,000 characters']) {
     expect(DEFAULT_PROMPT).toContain(part)
   }
 })
 
-// The text becomes the first message of the fresh session and so stays in its transcript; the skills are what the fork can name from the history.
+// The text becomes the first message of the fresh session and so stays in its transcript; the skills are what the internal handoff can name from the history.
 test('DEFAULT_PROMPT: asks to redact secrets and to name the skills the next session should call', async () => {
   expect(DEFAULT_PROMPT).toContain('Redact')
   expect(DEFAULT_PROMPT).toContain('Suggested skills')

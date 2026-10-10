@@ -3,9 +3,11 @@ import type { EngineInterface as Engine, Register } from 'claude-code'
 import { configOf, type Config, type ConfigResult } from './config'
 import { activeTasks, brakeOf, decide, effectiveThreshold, oneShots, type Decision } from './decide'
 import { hold } from './hold'
+import { checkOf, firstMethod } from './compact-check'
 import { logger, refresh, shows } from './log'
-import { carryOut, endOfTurn, redeliver, startOfTurn, throughChain, why, type Failure, type Io } from './relay'
+import { carryOut, endOfTurn, noteToolResult, redeliver, startOfTurn, throughMethods, why, type Failure, type Io, type Outcome } from './relay'
 import {
+  COMPACTED,
   HANDED_OVER,
   HANDOFF_UNDER_WAY,
   NOTHING_TO_REDELIVER,
@@ -39,6 +41,9 @@ const logTo = ($: Engine, state: State) => logger(() => state.logLevel, toLog($)
 // An empty name is no command of the user's own: shown as `none`, not as an empty quote.
 const commandShown = (name: string) => (name === '' ? 'none' : `"${name}"`)
 
+// The command's name is of interest only where a way uses it.
+const usesCommand = (c: Config) => c.handoffMethod === 'external-command' || c.handoffFallback === 'external-command'
+
 // The log level, read afresh at the start of every handler (see `refresh`). The host wants the variable's name as a literal at the call.
 // Each change to a level that shows `info` is marked with the settings in force, so that a log turned on halfway through a session says
 // them too, and shows from where on its finer lines start. Settings the mod rejects have their own line, said where the person looks.
@@ -48,7 +53,7 @@ const readLevel = async ($: Engine, settings: ConfigResult, state: State) => {
   const c = settings.config
   logTo($, state)(
     'info',
-    `settings: threshold ${c.threshold}, dry_run ${c.dryRun ? 'on' : 'off'}, min gap ${c.minGapMinutes} minutes and ${c.minGapTurns} turns, handoff command ${commandShown(c.handoffCommand)}, log level ${state.logLevel}`,
+    `settings: threshold ${c.threshold}, dry_run ${c.dryRun ? 'on' : 'off'}, min gap ${c.minGapMinutes} minutes and ${c.minGapTurns} turns, method ${c.handoffMethod}, fallback ${c.handoffFallback}${usesCommand(c) ? `, handoff command ${commandShown(c.handoffCommand)}` : ''}, log level ${state.logLevel}`,
   )
 }
 
@@ -68,9 +73,13 @@ const sessionIo = ($: Engine, state: State): Io => ({
   listDir: path => $.fs.list(path),
   tmpdir: () => $.env.get('TMPDIR'),
   home: () => $.env.get('HOME'),
-  fork: async prompt => {
+  modelFork: async prompt => {
     const r = await $.model.fork({ prompt })
     return r.isAnswered ? { isAnswered: true, text: r.text } : { isAnswered: false, reason: r.reason, ...('status' in r ? { status: r.status } : {}) }
+  },
+  compact: async () => {
+    const r = await $.session.compact()
+    return r.skip === undefined ? {} : { skip: r.skip }
   },
   tell: text => say($, text),
   log: logTo($, state),
@@ -103,16 +112,22 @@ const registerCommand = async ($: Engine, state: State) => {
 
 // Says how a run ended. Whatever goes wrong ends here as a line, never as an error into the host. The log names the stage, not the
 // reason: that can carry paths, the host's words and what was typed.
-const settle = async ($: Engine, state: State, run: { name: 'handoff' | 'redelivery'; done: string }, carry: () => Promise<Failure | undefined>) => {
+const settle = async (
+  $: Engine,
+  state: State,
+  run: { name: 'handover' | 'redelivery'; done: (outcome: Outcome) => string; sayFailure?: (failure: Failure) => boolean },
+  carry: () => Promise<Outcome>,
+) => {
   const log = logTo($, state)
   try {
-    const failure = await carry()
-    if (failure === undefined) say($, run.done)
+    const outcome = await carry()
+    const failure = outcome.failure
+    if (failure === undefined) say($, run.done(outcome))
     else if (failure.stage === 'cancelled') {
       say($, CANCELLED)
       log('info', `${run.name} cancelled`)
     } else {
-      say($, failedLine(failure.reason))
+      if (run.sayFailure?.(failure) ?? true) say($, failedLine(failure.reason))
       log('warn', `${run.name} failed (stage ${failure.stage})`)
     }
   } catch (err) {
@@ -124,7 +139,7 @@ const settle = async ($: Engine, state: State, run: { name: 'handoff' | 'redeliv
 // The submit waits for the session to be idle, so it is not waited for in the command: the command answers at once.
 const redeliverLater = async ($: Engine, state: State) => {
   try {
-    await settle($, state, { name: 'redelivery', done: REDELIVERED }, () => redeliver(sessionIo($, state), state))
+    await settle($, state, { name: 'redelivery', done: () => REDELIVERED }, async () => ({ failure: await redeliver(sessionIo($, state), state) }))
   } finally {
     state.redelivering = false
   }
@@ -144,12 +159,26 @@ const commandText = ($: Engine, config: Config | undefined, args: string, state:
 // Runs the handoff to its end and says how it went.
 const handoff = async ($: Engine, config: Config, state: State, tokens: number) => {
   const io = sessionIo($, state)
-  io.log('info', `handoff starts, command ${commandShown(config.handoffCommand)}`)
+  io.log('info', `handoff starts, method ${config.handoffMethod}`)
   try {
-    await settle($, state, { name: 'handoff', done: HANDED_OVER }, async () => {
-      const failure = await carryOut(io, state, () => throughChain(io, state, config.handoffCommand))
-      if (failure === undefined) state.afterHandoff = { before: tokens, pauses: 0 }
-      return failure
+    const done = (outcome: Outcome) => (outcome.method === 'builtin-compact' ? COMPACTED : HANDED_OVER)
+    // The failure that the mark alone causes (a compact as the only way, not asked because the last one was not enough) is told once for each mark.
+    const sayFailure = (failure: Failure) => {
+      const check = state.compactCheck
+      const byMarkAlone = failure.stage === 'compact' && config.handoffMethod === 'builtin-compact' && config.handoffFallback === 'none'
+      if (!byMarkAlone || check?.kind !== 'insufficient') return true
+      if (check.said) return false
+      check.said = true
+      return true
+    }
+    await settle($, state, { name: 'handover', done, sayFailure }, async () => {
+      const outcome = await carryOut(io, state, () => throughMethods(io, state, config))
+      if (outcome.failure === undefined) {
+        state.afterHandoff = { before: tokens, pauses: 0 }
+        // A compact is checked at the pauses after it; a handoff into a fresh session starts over.
+        state.compactCheck = outcome.method === 'builtin-compact' ? { kind: 'pending' } : undefined
+      }
+      return outcome
     })
   } finally {
     // `carryOut` ends the holding itself, in one step with its last look at what was held; this covers a throw before that.
@@ -168,7 +197,9 @@ const sayOnce = ($: Engine, state: State, key: string, text: string): boolean =>
 // `act` comes only with the dry run off. It starts the handoff after the stop has returned: the stop is a hook the turn waits on, and the
 // command is a turn of its own that would wait on this one.
 const handOver = ($: Engine, decision: Extract<Decision, { kind: 'act' }>, config: Config, state: State) => {
-  say($, reportOf(decision))
+  // Without a first way (a compact that was not enough, and no fallback) there is nothing to announce: the run fails at the mark.
+  const first = firstMethod(config, state)
+  if (first !== undefined) say($, reportOf(decision, first))
   state.handingOver = true
   state.held = []
   $.clock.after(0, () => void handoff($, config, state, decision.tokens))
@@ -199,8 +230,13 @@ const atPause = async ($: Engine, e: Stop, config: Config, state: State) => {
     fresh.pauses += 1
     log('debug', `after handoff: context ${snapshot.tokens} tokens (${fresh.before} before the handoff), pause ${fresh.pauses}`)
   }
-  const decision = decide(snapshot, config)
+  // Before `decide` judges and `firstMethod` names the first way: at the first pause after a compact that was not enough the context is above
+  // the threshold, so `decide` says `act`, and a mark set only after it would let that run compact once more to no effect.
   const threshold = effectiveThreshold(config.threshold, snapshot.window)
+  const before = state.compactCheck
+  state.compactCheck = checkOf(before, snapshot.tokens, threshold)
+  if (before?.kind === 'pending' && state.compactCheck?.kind === 'insufficient') log('debug', 'compact left the context above the threshold')
+  const decision = decide(snapshot, config)
   log(
     'info',
     `pause: context ${snapshot.tokens} of ${snapshot.window} tokens (threshold ${threshold}, brake ${brakeOf(threshold, snapshot.window)}), ${snapshot.backgroundTasks} background tasks, ${snapshot.oneShotTimers} timers, ${snapshot.subagents} subagents, turn ${turns}, ${state.lastAttempt === undefined ? 'no attempt before' : `last attempt at turn ${state.lastAttempt.turns}`}${limitsOf(rateLimits)}, decided ${decision.kind}${decision.kind === 'defer' ? ` (${decision.reason})` : ''}${'forced' in decision && decision.forced !== undefined ? `, forced past the brake by ${decision.forced}` : ''}`,
@@ -209,15 +245,16 @@ const atPause = async ($: Engine, e: Stop, config: Config, state: State) => {
     state.said = undefined
     return
   }
+  const report = () => reportOf(decision, firstMethod(config, state) ?? config.handoffMethod)
   if (decision.kind === 'defer') {
-    sayOnce($, state, decision.reason, reportOf(decision))
+    sayOnce($, state, decision.reason, report())
     return
   }
   // A dry run counts as an attempt too: it shows the pace the real run would keep.
   state.said = undefined
   state.lastAttempt = { at: now, turns }
   if (decision.kind === 'act') handOver($, decision, config, state)
-  else say($, reportOf(decision))
+  else say($, report())
 }
 
 // The stop is a hook the turn waits on and can only be asked to go on: an error here is said once and the stop ends as if the mod were absent.
@@ -291,6 +328,21 @@ export const register: Register = (on, options) => {
     if (handingOver) logTo($, state)('debug', `input while handing over (${e.origin.kind}): ${reason === undefined ? 'let through' : 'held'}`)
     return reason === undefined ? next(e) : { drop: reason }
   }).catch((_, e, next) => next(e))
+
+  // Watches the calls of the command's turn for the user's decline at the permission prompt; changes nothing about them. Whatever goes wrong
+  // here stays here: the call is the host's, and this hook is only a pair of eyes.
+  on('tool.call', async ($, e, next) => {
+    const out = await next(e)
+    try {
+      if (noteToolResult(state, e, out)) {
+        await readLevel($, settings, state)
+        logTo($, state)('debug', "the command's turn: a permission was declined")
+      }
+    } catch {
+      // Not noting it leaves the run as it was before: the fallback follows.
+    }
+    return out
+  })
 
   on('turn.complete', async ($, e, next) => {
     const main = e.agentId === undefined

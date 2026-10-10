@@ -2,11 +2,13 @@ import { test, expect } from 'claude-code/testing'
 
 import { firstMessage, promptPath } from './handoff'
 import {
+  COMPACT_DONE,
+  COMPACT_VETO,
   commandTurnEnds,
   DUE,
   endTurn,
   FILE,
-  forkAnswer,
+  modelForkAnswer,
   hostWith,
   LIVE,
   MINUTE,
@@ -20,6 +22,7 @@ import {
   typeInto,
   withMod,
   type TestEngine,
+  COMPACT_ONLY,
 } from './test-support'
 
 // The log level is read from the environment at the start of every handler that logs, so a value changed in a settings file is in force
@@ -115,10 +118,11 @@ test('a read that fails keeps what was read before, writes nothing, and the mod 
 // line that marks the level is left out where a test follows the order of the others.
 
 const AT = (level: string) => ({ logLevel: level })
-const FORKED = forkAnswer('goal: finish')
+const MODEL_FORK_ANSWER = modelForkAnswer('goal: finish')
 const PAUSE =
   'info: pause: context 210000 of 1000000 tokens (threshold 200000, brake 350000), 0 background tasks, 0 timers, 0 subagents, turn 10, no attempt before, decided act'
-const SETTINGS = 'settings: threshold 200000, dry_run off, min gap 10 minutes and 5 turns, handoff command "handoff"'
+const SETTINGS =
+  'settings: threshold 200000, dry_run off, min gap 10 minutes and 5 turns, method external-command, fallback internal-handoff, handoff command "handoff"'
 const lines = (logs: string[]) => logs.filter(l => !l.startsWith('info: settings:'))
 const diagnostic = (logs: string[]) => logs.filter(l => /^(warn|info|debug|trace): /.test(l))
 
@@ -276,7 +280,7 @@ test('the handoff is logged step by step', LIVE, async ($, on) => {
   await commandTurnEnds($, world, `All written.\nHANDOFF_PATH: ${FILE}`)
   const message = firstMessage(NOTES)
   expect(lines(seen.logs).slice(8)).toEqual([
-    'info: handoff starts, command "handoff"',
+    'info: handoff starts, method external-command',
     'debug: command "handoff" is listed',
     'debug: command started, waiting for its turn',
     'trace: turn.start t2',
@@ -293,12 +297,12 @@ test('the handoff is logged step by step', LIVE, async ($, on) => {
   ])
 })
 
-test('with no handoff command set the log says so, as the settings line does', { options: { ...LIVE.options, handoff_command: '' } }, async ($, on) => {
+test('with the internal handoff as the method the log says so, as the settings line does', { options: { dry_run: false } }, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
-  hostWith(on, { ...AT('info'), fork: FORKED })
+  hostWith(on, { ...AT('info'), modelFork: MODEL_FORK_ANSWER })
   await reachThreshold($, world)
-  expect(seen.logs).toContain('info: handoff starts, command none')
+  expect(seen.logs).toContain('info: handoff starts, method internal-handoff')
 })
 
 // What the fresh session starts at, and how it grows over its first pauses, is what the handoff's reload costs: read from the log and not
@@ -371,30 +375,30 @@ test('while the command is awaited, a turn that is not its own is logged, at its
 
 const PROMPT_FILE = promptPath('/home/me')
 
-test('the fork is logged with where its prompt came from and how long it took', LIVE, async ($, on) => {
+test('the internal handoff is logged with where its prompt came from and how long it took', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
-  hostWith(on, { ...AT('debug'), commands: [], fork: FORKED })
+  hostWith(on, { ...AT('debug'), commands: [], modelFork: MODEL_FORK_ANSWER })
   await reachThreshold($, world)
-  expect(seen.logs).toContain("debug: fork asked, the mod's own prompt")
-  expect(seen.logs).toContain('info: fork answered, 12 characters, after 0 ms')
+  expect(seen.logs).toContain("debug: internal handoff asked, the mod's own prompt")
+  expect(seen.logs).toContain('info: internal handoff answered, 12 characters, after 0 ms')
 })
 
-test('the prompt file of the user is named in the log when the fork reads it', LIVE, async ($, on) => {
+test('the prompt file of the user is named in the log when the internal handoff reads it', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
-  hostWith(on, { ...AT('debug'), commands: [], fork: FORKED, files: { [PROMPT_FILE]: 'Write it in German.' } })
+  hostWith(on, { ...AT('debug'), commands: [], modelFork: MODEL_FORK_ANSWER, files: { [PROMPT_FILE]: 'Write it in German.' } })
   await reachThreshold($, world)
-  expect(seen.logs).toContain(`debug: fork asked, prompt from ${PROMPT_FILE}`)
+  expect(seen.logs).toContain(`debug: internal handoff asked, prompt from ${PROMPT_FILE}`)
 })
 
-test('a fork that never answers is a warning, with the time it was waited for', LIVE, async ($, on) => {
+test('an internal handoff that never answers is a warning, with the time it was waited for', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
-  hostWith(on, { ...AT('warn'), commands: [], fork: 'hang' })
+  hostWith(on, { ...AT('warn'), commands: [], modelFork: 'hang' })
   await reachThreshold($, world)
   await world.clock.advance(3 * MINUTE)
-  expect(seen.logs).toContain('warn: fork gave nothing (timeout), after 180000 ms')
+  expect(seen.logs).toContain('warn: internal handoff gave nothing (timeout), after 180000 ms')
 })
 
 test('typing held before the `/clear` is logged as part of the first message', LIVE, async ($, on) => {
@@ -428,12 +432,12 @@ test('typing held while the message is submitted and refused afterwards is a war
 // What goes wrong is said to the person and logged at `warn` beside it: the line names the kind of failure and numbers, never the reason,
 // which can carry paths, the host's words and what was typed.
 
-test('a change to the fork is a warning that names the stage the command failed at', LIVE, async ($, on) => {
+test('a change to the internal handoff is a warning that names the stage the command failed at', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
-  hostWith(on, { ...AT('warn'), commands: [], fork: FORKED })
+  hostWith(on, { ...AT('warn'), commands: [], modelFork: MODEL_FORK_ANSWER })
   await reachThreshold($, world)
-  expect(diagnostic(seen.logs)).toEqual(['warn: fork fallback (stage command)'])
+  expect(diagnostic(seen.logs)).toEqual(['warn: fallback to internal-handoff (stage command)'])
 })
 
 test('a failed handoff is a warning that names its stage', LIVE, async ($, on) => {
@@ -442,15 +446,15 @@ test('a failed handoff is a warning that names its stage', LIVE, async ($, on) =
   hostWith(on, { ...AT('warn'), files: { [FILE]: NOTES }, failRun: ['clear'] })
   await reachThreshold($, world)
   await commandTurnEnds($, world, `HANDOFF_PATH: ${FILE}`)
-  expect(diagnostic(seen.logs)).toEqual(['warn: handoff failed (stage clear)'])
+  expect(diagnostic(seen.logs)).toEqual(['warn: handover failed (stage clear)'])
 })
 
-test('a fork that gives nothing for a reason the mod does not know is a warning without the host words', LIVE, async ($, on) => {
+test('an internal handoff that gives nothing for a reason the mod does not know is a warning without the host words', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
-  hostWith(on, { ...AT('warn'), commands: [], fork: { isAnswered: false, reason: 'quota spent' } })
+  hostWith(on, { ...AT('warn'), commands: [], modelFork: { isAnswered: false, reason: 'quota spent' } })
   await reachThreshold($, world)
-  expect(seen.logs).toContain('warn: fork gave nothing (other), after 0 ms')
+  expect(seen.logs).toContain('warn: internal handoff gave nothing (other), after 0 ms')
 })
 
 test('a handoff cancelled with Esc is logged at info, as no failure', LIVE, async ($, on) => {
@@ -461,7 +465,49 @@ test('a handoff cancelled with Esc is logged at info, as no failure', LIVE, asyn
   await startTurn($, 't2')
   await endTurn($, 'aborted', { turnId: 't2' })
   await world.clock.settle()
-  expect(lines(diagnostic(seen.logs)).slice(-1)).toEqual(['info: handoff cancelled'])
+  expect(lines(diagnostic(seen.logs)).slice(-1)).toEqual(['info: handover cancelled'])
+})
+
+// The compact is logged like the other ways: the ask at `debug`, the end at `info`, a failure at `warn` by its stage, never with the host's words
+// or a veto's text.
+test('a compact is logged as asked at debug and as done at info, with its time', COMPACT_ONLY, async ($, on) => {
+  const seen = withMod(on)
+  const world = sessionWith(on)
+  hostWith(on, { ...AT('debug'), compact: COMPACT_DONE })
+  await reachThreshold($, world)
+  expect(lines(diagnostic(seen.logs)).slice(-2)).toEqual(['debug: compact asked', 'info: compacted, after 0 ms'])
+})
+
+test('a compact that is vetoed or refused is a warning that names the stage and not the reason', COMPACT_ONLY, async ($, on) => {
+  const seen = withMod(on)
+  const world = sessionWith(on)
+  hostWith(on, { ...AT('warn'), compact: COMPACT_VETO })
+  await reachThreshold($, world)
+  expect(diagnostic(seen.logs)).toEqual(['warn: compact skipped', 'warn: handover failed (stage compact)'])
+  expect(seen.logs.join('\n')).not.toContain('info:')
+})
+
+test('a compact the host refuses is a warning of its own', COMPACT_ONLY, async ($, on) => {
+  const seen = withMod(on)
+  const world = sessionWith(on)
+  hostWith(on, AT('warn'))
+  await reachThreshold($, world)
+  expect(diagnostic(seen.logs)).toEqual(['warn: compact refused', 'warn: handover failed (stage compact)'])
+})
+
+test('after a compact the first pauses of the session are logged against the context before it, as after a handoff', COMPACT_ONLY, async ($, on) => {
+  const seen = withMod(on)
+  const world = sessionWith(on)
+  hostWith(on, { ...AT('debug'), compact: COMPACT_DONE })
+  await reachThreshold($, world)
+  world.tokens = 90_000
+  await startTurn($, 'n0')
+  await endTurn($, 'answer', { turnId: 'n0' })
+  await stop($)
+  await world.clock.settle()
+  expect(seen.logs.filter(l => l.startsWith('debug: after handoff'))).toEqual([
+    'debug: after handoff: context 90000 tokens (210000 before the handoff), pause 1',
+  ])
 })
 
 test('a pause that cannot be read is a warning once, as the line the person gets', LIVE, async ($, on) => {
@@ -597,11 +643,11 @@ const scenarios: [string, Partial<import('./test-support').Host>, string][] = [
     `ANSWER-SECRET\nHANDOFF_PATH: ${FILE}`,
   ],
   [
-    'the fork, which fails for a reason of the host',
-    { commands: [], files: { [PROMPT_FILE]: 'PROMPT-SECRET' }, fork: { isAnswered: false, reason: 'REASON-SECRET' } },
+    'the internal handoff, which fails for a reason of the host',
+    { commands: [], files: { [PROMPT_FILE]: 'PROMPT-SECRET' }, modelFork: { isAnswered: false, reason: 'REASON-SECRET' } },
     '',
   ],
-  ['the fork, whose message is dropped', { commands: [], fork: { isAnswered: true, text: 'FORK-SECRET' }, dropSubmit: 'DROP-SECRET' }, ''],
+  ['the internal handoff, whose message is dropped', { commands: [], modelFork: { isAnswered: true, text: 'HANDOFF-SECRET' }, dropSubmit: 'DROP-SECRET' }, ''],
   ['a clear that fails', { files: { [FILE]: 'NOTES-SECRET' }, failRun: ['clear'] }, `ANSWER-SECRET HANDOFF_PATH: ${FILE}`],
 ]
 

@@ -19,7 +19,7 @@ jobs:
       matrix:
         # The first entry is the version the mod is developed against (README, Install).
         # `latest` reports early when a new Claude Code changes the mod interface.
-        claude-code: ['2.1.294', latest]
+        claude-code: ['2.1.296', latest]
     name: Claude Code ${{ matrix.claude-code }}
     steps:
       - uses: actions/checkout@v4

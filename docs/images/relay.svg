@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="780" height="250" viewBox="0 0 780 250" role="img" aria-labelledby="t d">
   <title id="t">sweet-spot handover, drawn as a loop</title>
-  <desc id="d">The context bar fills past the threshold, the mod waits for a subagent, hands the session over and continues in a fresh one with a small context.</desc>
+  <desc id="d">The context bar fills past the threshold, the mod waits for a subagent, hands the session over (by default it writes a handoff, clears the session and submits it) and continues in a fresh one with a small context.</desc>
   <style>
     text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 15px; }
     .dim { fill: #8b949e; } .fg { fill: #e6edf3; } .y { fill: #e3b341; } .g { fill: #3fb950; } .b { fill: #58a6ff; }
@@ -75,7 +75,7 @@
   </g>
 
   <g class="l a1"><text x="36" y="134" class="y">waiting</text><text x="140" y="134" class="fg">a subagent is still running</text></g>
-  <g class="l a2"><text x="36" y="162" class="g">handover</text><text x="140" y="162" class="fg">/handoff  →  /clear  →  summary is the first message</text></g>
+  <g class="l a2"><text x="36" y="162" class="g">handover</text><text x="140" y="162" class="fg">writes a handoff  →  /clear  →  it is the first message</text></g>
   <g class="l a3"><text x="36" y="190" class="b">typing</text><text x="140" y="190" class="fg">held meanwhile, sent right after the summary</text></g>
   <g class="l a4"><text x="36" y="218" class="g">fresh</text><text x="140" y="218" class="fg">carries on where you left off</text></g>
 </svg>

@@ -1,7 +1,7 @@
 {
   "name": "sweet-spot",
   "version": "0.1.0",
-  "description": "Hands a long session over to a fresh one before the context gets too big",
+  "description": "Hands a long session over, to a fresh one or by compacting, before the context gets too big",
   "author": {
     "name": "Patrick Müller",
     "url": "https://github.com/muellerei"
@@ -38,10 +38,24 @@
       "default": 5,
       "min": 0
     },
+    "handoff_method": {
+      "type": "string",
+      "title": "Handoff method",
+      "description": "How the session is handed over. internal-handoff: Claude writes a handoff and the mod starts a fresh session with it. builtin-compact: Claude Code's own /compact, the session stays. external-command: your own command writes the handoff (advanced, see Handoff command).",
+      "default": "internal-handoff",
+      "options": ["internal-handoff", "builtin-compact", "external-command"]
+    },
+    "handoff_fallback": {
+      "type": "string",
+      "title": "Fallback method",
+      "description": "Used when the main method fails before it changed the session. internal-handoff, builtin-compact, external-command: as in Handoff method. none: no second try; the mod says why. Same as the main method: no fallback.",
+      "default": "builtin-compact",
+      "options": ["none", "internal-handoff", "builtin-compact", "external-command"]
+    },
     "handoff_command": {
       "type": "string",
       "title": "Handoff command",
-      "description": "Name of your own handoff command, as the command list shows it, without the slash. Leave empty and the mod writes the handoff itself.",
+      "description": "Only used with external-command (advanced). Name of your own handoff command, as the command list shows it, without the slash.",
       "default": ""
     }
   }
