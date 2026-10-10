@@ -86,7 +86,7 @@ els = ''.join(f'  <g class="e{" fin" if fin else ""}" style="animation-name:{i}"
 track = f'  <line x1="{START}" y1="{TRACK}" x2="{END+10}" y2="{TRACK}" stroke="#21262d" stroke-width="2"/>\n'
 tok = f'  <g class="e tokg" style="animation-name:tok"><circle class="tokc" cx="{START}" cy="{TRACK}" r="8"/></g>\n'
 svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" role="img" aria-labelledby="t d">
-  <title id="t">the questions context-relay asks at every pause, in order</title>
+  <title id="t">the questions sweet-spot asks at every pause, in order</title>
   <desc id="d">Five checks in a fixed order, each drawn as a symbol: a real pause, enough context, nothing running, enough time since the last attempt, dry run off. A dot passes them and the mod hands over; in a second run work is still running and the dot waits at the third check.</desc>
   <style>
 {BASECSS}    .e {{ opacity: 0; animation-duration: {DUR}s; animation-timing-function: linear; animation-iteration-count: infinite; animation-fill-mode: both; }}

@@ -1,5 +1,5 @@
 {
-  "name": "context-relay",
+  "name": "sweet-spot",
   "version": "0.1.0",
   "description": "Hands a long session over to a fresh one before the context gets too big",
   "author": {
@@ -7,8 +7,8 @@
     "url": "https://github.com/muellerei"
   },
   "license": "MIT",
-  "homepage": "https://github.com/muellerei/context-relay",
-  "repository": "https://github.com/muellerei/context-relay",
+  "homepage": "https://github.com/muellerei/sweet-spot",
+  "repository": "https://github.com/muellerei/sweet-spot",
   "keywords": ["claude-code-mod", "context", "handoff", "cache"],
   "userConfig": {
     "threshold": {

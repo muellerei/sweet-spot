@@ -98,7 +98,7 @@ const fallingBack: [string, (host: Host) => void, (w: SessionWorld, $: TestEngin
     'the file named cannot be read',
     () => {},
     (w, $) => commandTurnEnds($, w, 'HANDOFF_PATH: /var/T/missing.md'),
-    'the handoff file could not be read (context-relay: $.fs.read: no such file: /var/T/missing.md)',
+    'the handoff file could not be read (sweet-spot: $.fs.read: no such file: /var/T/missing.md)',
   ],
   [
     'the file named is older than the run',
@@ -192,7 +192,7 @@ const notFallingBack: [string, (host: Host) => void, string, string][] = [
     `the fresh session did not get the handoff (a hook dropped it: held); it is in ${FILE}`,
     `HANDOFF_PATH: ${FILE}`,
   ],
-  ['the environment cannot be read', host => (host.envError = 'denied'), 'context-relay: $.env.get: denied', 'no line'],
+  ['the environment cannot be read', host => (host.envError = 'denied'), 'sweet-spot: $.env.get: denied', 'no line'],
 ]
 
 for (const [name, arrange, reason, answer] of notFallingBack) {
@@ -317,7 +317,7 @@ test('typing while the fork works is held and goes into the first message, once'
   const host = hostWith(on, { commands: [], fork: ANSWERED })
   host.during.fork = async () => {
     expect(await typeInto($, 'also fix the lexer')).toEqual({
-      drop: 'context-relay: a handoff is in progress, your message is held and goes in when it is done',
+      drop: 'sweet-spot: a handoff is in progress, your message is held and goes in when it is done',
     })
   }
   await reachThreshold($, world)

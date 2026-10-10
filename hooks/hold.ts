@@ -4,8 +4,8 @@
 
 import type { State } from './state'
 
-export const HELD = 'context-relay: a handoff is in progress, your message is held and goes in when it is done'
-export const NO_ATTACHMENTS = 'context-relay: a handoff is in progress and attachments cannot be held, send the message again when it is done'
+export const HELD = 'sweet-spot: a handoff is in progress, your message is held and goes in when it is done'
+export const NO_ATTACHMENTS = 'sweet-spot: a handoff is in progress and attachments cannot be held, send the message again when it is done'
 
 type Typing = { text: string; attachments?: readonly unknown[]; origin: { kind: string } }
 

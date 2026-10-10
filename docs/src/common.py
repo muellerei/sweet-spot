@@ -6,7 +6,7 @@ FRESH = (62_000, 98_000)     # where a fresh session started in real handovers
 HEAD = '''  <rect width="{W}" height="{H}" rx="10" fill="#0d1117"/>
   <rect width="{W}" height="34" rx="10" fill="#161b22"/><rect y="24" width="{W}" height="10" fill="#161b22"/>
   <circle cx="22" cy="17" r="5.5" fill="#ff5f56"/><circle cx="42" cy="17" r="5.5" fill="#ffbd2e"/><circle cx="62" cy="17" r="5.5" fill="#27c93f"/>
-  <text x="{cx}" y="22" text-anchor="middle" class="dim" style="font-size:12px">context-relay</text>
+  <text x="{cx}" y="22" text-anchor="middle" class="dim" style="font-size:12px">sweet-spot</text>
 '''
 BASECSS = '''    text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 15px; }
     .dim { fill: #8b949e; } .fg { fill: #e6edf3; } .y { fill: #e3b341; } .g { fill: #3fb950; } .b { fill: #58a6ff; }

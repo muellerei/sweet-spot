@@ -27,11 +27,11 @@ import {
 } from './test-support'
 
 // What the person types while a handoff runs, and what is left to put right when the handoff does not get through: the typing is held
-// and goes in once, the first message that did not arrive stays pending, and `/context-relay redeliver` submits it again.
+// and goes in once, the first message that did not arrive stays pending, and `/sweet-spot redeliver` submits it again.
 
 const RUN = `run handoff ${ASK_FOR_PATH}`
-const HELD = 'context-relay: a handoff is in progress, your message is held and goes in when it is done'
-const NO_ATTACHMENTS = 'context-relay: a handoff is in progress and attachments cannot be held, send the message again when it is done'
+const HELD = 'sweet-spot: a handoff is in progress, your message is held and goes in when it is done'
+const NO_ATTACHMENTS = 'sweet-spot: a handoff is in progress and attachments cannot be held, send the message again when it is done'
 const HEAD = 'Typed while the handoff ran:'
 const FIRST = firstMessage(NOTES)
 const withHeld = (...items: string[]) => `${FIRST}\n\n${HEAD}\n${items.join('\n\n')}`
@@ -214,7 +214,7 @@ test('typing that cannot go back into the session is kept for redelivery, and th
   await world.clock.settle()
   expect(host.store.get(PENDING)).toBe('one\n\ntwo')
   expect(seen.logs.at(-1)).toBe(
-    `handoff failed, the command "handoff" does not exist; ${FORK_ALSO}; the typing held meanwhile could not be put back (no implementation for prompt.submit), \`/context-relay redeliver\` submits it`,
+    `handoff failed, the command "handoff" does not exist; ${FORK_ALSO}; the typing held meanwhile could not be put back (no implementation for prompt.submit), \`/sweet-spot redeliver\` submits it`,
   )
 })
 
@@ -250,7 +250,7 @@ test('late typing that cannot be submitted after a handoff is kept for redeliver
   expect(submits(host)).toEqual([`submit ${FIRST}`, 'submit late one'])
   expect(host.store.get('pending:new')).toBe('late one')
   expect(seen.logs.at(-1)).toBe(
-    'handoff failed, the typing held meanwhile could not be put back (no implementation for prompt.submit), `/context-relay redeliver` submits it',
+    'handoff failed, the typing held meanwhile could not be put back (no implementation for prompt.submit), `/sweet-spot redeliver` submits it',
   )
 })
 
@@ -262,6 +262,6 @@ test('typing that can be neither put back nor kept is named in the failure, so i
   await typeInto($, 'precious')
   await world.clock.settle()
   expect(seen.logs.at(-1)).toBe(
-    `handoff failed, the command "handoff" does not exist; ${FORK_ALSO}; the typing held meanwhile could not be put back (no implementation for prompt.submit) or kept (context-relay: $.store.set: store is down), it is lost: precious`,
+    `handoff failed, the command "handoff" does not exist; ${FORK_ALSO}; the typing held meanwhile could not be put back (no implementation for prompt.submit) or kept (sweet-spot: $.store.set: store is down), it is lost: precious`,
   )
 })

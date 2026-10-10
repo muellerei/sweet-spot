@@ -1,4 +1,4 @@
-# Working on context-relay
+# Working on sweet-spot
 
 How to run the mod from a clone, change it, and check it the way the CI does. For the path a handoff takes, see
 [architecture.md](architecture.md); for writing tests, [testing.md](testing.md); for what the host does, [host-behaviour.md](host-behaviour.md).
@@ -16,7 +16,7 @@ How to run the mod from a clone, change it, and check it the way the CI does. Fo
 claude --plugin-dir .
 ```
 
-This loads the checkout as the mod. If context-relay is also installed, disable that copy first: only one plugin of a name gets its
+This loads the checkout as the mod. If sweet-spot is also installed, disable that copy first: only one plugin of a name gets its
 hooks, and the host says so with "another plugin of that name loads first".
 
 To see a handoff without working up to the default threshold, lower `threshold` in `/config` (the README, under Settings, names the lowest it takes) or turn `dry_run` on

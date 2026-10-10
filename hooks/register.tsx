@@ -43,7 +43,7 @@ const commandShown = (name: string) => (name === '' ? 'none' : `"${name}"`)
 // Each change to a level that shows `info` is marked with the settings in force, so that a log turned on halfway through a session says
 // them too, and shows from where on its finer lines start. Settings the mod rejects have their own line, said where the person looks.
 const readLevel = async ($: Engine, settings: ConfigResult, state: State) => {
-  const before = await refresh(() => $.env.get('CONTEXT_RELAY_LOG_LEVEL'), toLog($), state)
+  const before = await refresh(() => $.env.get('SWEET_SPOT_LOG_LEVEL'), toLog($), state)
   if (!settings.ok || state.logLevel === before || !shows(state.logLevel, 'info')) return
   const c = settings.config
   logTo($, state)(
@@ -90,7 +90,7 @@ const introduce = async ($: Engine, settings: ConfigResult, state: State) => {
 }
 
 // The one command of the mod; what it does is the word after it.
-const COMMAND = 'context-relay'
+const COMMAND = 'sweet-spot'
 
 const registerCommand = async ($: Engine, state: State) => {
   try {

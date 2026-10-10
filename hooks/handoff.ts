@@ -72,7 +72,7 @@ export const DEFAULT_PROMPT = [
 export const withoutTrailingSeparator = (dir: string): string => dir.replace(/[\\/]$/, '')
 
 // Where the user's own prompt lives. The mod reads it and never writes it.
-export const promptPath = (home: string): string => `${withoutTrailingSeparator(home)}/.claude/context-relay/handoff-prompt.md`
+export const promptPath = (home: string): string => `${withoutTrailingSeparator(home)}/.claude/sweet-spot/handoff-prompt.md`
 
 // A file that is missing, unreadable or blank leaves the prompt the mod brings.
 export const promptFrom = (file: unknown): string => (typeof file === 'string' && file.trim() !== '' ? file.trim() : DEFAULT_PROMPT)

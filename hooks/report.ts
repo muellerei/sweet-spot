@@ -1,4 +1,4 @@
-// The host puts "context-relay:" in front of a log line and of what the command returns itself, so none of these lines starts with the name. The hold's own lines carry it; `hold.ts` says why.
+// The host puts "sweet-spot:" in front of a log line and of what the command returns itself, so none of these lines starts with the name. The hold's own lines carry it; `hold.ts` says why.
 // What the mod says about a decision. Every line names the context size: a person who sees "postponed" wants to know how close the limit is.
 
 import type { BusyReason, DeferReason, Decision } from './decide'
@@ -31,7 +31,7 @@ export const REDELIVERING = 'redelivering the handoff'
 
 export const NOTHING_TO_REDELIVER = 'nothing to redeliver'
 
-const USAGE = 'use `/context-relay redeliver` to submit again the handoff that did not reach the fresh session'
+const USAGE = 'use `/sweet-spot redeliver` to submit again the handoff that did not reach the fresh session'
 
 // An argument the command does not know is named, so that a guess like `wait 10000` does not read as a hint about something else.
 export const usageFor = (args: string): string => (args.trim() === '' ? USAGE : `unknown argument "${args}", ${USAGE}`)

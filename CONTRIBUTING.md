@@ -1,6 +1,6 @@
-# Contributing to context-relay
+# Contributing to sweet-spot
 
-Hey, thanks for stopping by. context-relay is a small, simple helper for people who use Claude. I keep it simple on purpose, but that is a guide and not a rule: what makes it better is good ideas, and yours are welcome in any shape. An idea, a question, a bug report, a quick "works on my setup", a typo, a test on a terminal I don't have, some code. None of it has to be polished. Let's make it better together.
+Hey, thanks for stopping by. sweet-spot is a small, simple helper for people who use Claude. I keep it simple on purpose, but that is a guide and not a rule: what makes it better is good ideas, and yours are welcome in any shape. An idea, a question, a bug report, a quick "works on my setup", a typo, a test on a terminal I don't have, some code. None of it has to be polished. Let's make it better together.
 
 ## Ways to help, no code needed
 
@@ -10,7 +10,7 @@ Hey, thanks for stopping by. context-relay is a small, simple helper for people 
 - **Report a bug.** Say what you can: your Claude Code version, terminal or desktop app, what happened and what you expected. A half-filled report is welcome too. Please use made-up names in examples and leave real project names and prompts out.
 - **Fix a typo or a clumsy sentence.**
 
-Open an [issue](https://github.com/muellerei/context-relay/issues) or start a [discussion](https://github.com/muellerei/context-relay/discussions), whichever feels natural. No need to pick the right place, I'll move it if it fits better elsewhere, and no need to ask first. Write in whatever language suits you. The repository is in English, so English is a plus where you can.
+Open an [issue](https://github.com/muellerei/sweet-spot/issues) or start a [discussion](https://github.com/muellerei/sweet-spot/discussions), whichever feels natural. No need to pick the right place, I'll move it if it fits better elsewhere, and no need to ask first. Write in whatever language suits you. The repository is in English, so English is a plus where you can.
 
 ## Build and check
 
@@ -18,7 +18,7 @@ Open an [issue](https://github.com/muellerei/context-relay/issues) or start a [d
 
 ## Debugging
 
-The mod writes diagnostic lines to the transcript when the environment variable `CONTEXT_RELAY_LOG_LEVEL` is set. It is not a setting: nothing in the package sets it, and `claude plugin validate` shows that the mod only reads it. Each line starts with its level, and each level includes the ones before it:
+The mod writes diagnostic lines to the transcript when the environment variable `SWEET_SPOT_LOG_LEVEL` is set. It is not a setting: nothing in the package sets it, and `claude plugin validate` shows that the mod only reads it. Each line starts with its level, and each level includes the ones before it:
 
 | Value   | What you see                                                                                                                                  |
 | ------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -32,8 +32,8 @@ Case and surrounding spaces do not matter. Any other value, `1` and `true` inclu
 
 Two ways to turn it on:
 
-- For one run: `CONTEXT_RELAY_LOG_LEVEL=debug claude`. It cannot be changed while that session runs.
-- For this clone: `{ "env": { "CONTEXT_RELAY_LOG_LEVEL": "debug" } }` in `.claude/settings.local.json`. A new value counts from the next turn, without a restart or `/reload-plugins`, and a `settings:` line marks each change to `info` or above. A `.env` file is not read.
+- For one run: `SWEET_SPOT_LOG_LEVEL=debug claude`. It cannot be changed while that session runs.
+- For this clone: `{ "env": { "SWEET_SPOT_LOG_LEVEL": "debug" } }` in `.claude/settings.local.json`. A new value counts from the next turn, without a restart or `/reload-plugins`, and a `settings:` line marks each change to `info` or above. A `.env` file is not read.
 
 Leave it out of `~/.claude/settings.json`, or every session everywhere logs. Lines from before a handoff's `/clear` vanish from the window; start with `--debug-file <path>` to keep them. Events from before the variable was set cannot be logged after the fact, so a test run that looks for a rare event starts with it set.
 
@@ -53,7 +53,7 @@ Not sure about any of it? Open the pull request anyway and we'll sort it out tog
 
 ## Things to talk about first
 
-context-relay has one purpose: hand a session over before the context gets too big. Memory, guards, panels and the like belong in other tools. If you have an idea that would stretch that, tell me first. It doesn't mean the idea is unwelcome. A good idea can change my mind, so open an issue or a discussion and let's talk.
+sweet-spot has one purpose: hand a session over before the context gets too big. Memory, guards, panels and the like belong in other tools. If you have an idea that would stretch that, tell me first. It doesn't mean the idea is unwelcome. A good idea can change my mind, so open an issue or a discussion and let's talk.
 
 If you find something that could be used to attack the mod, please don't post it in public. [SECURITY.md](SECURITY.md) says how to report it privately.
 
@@ -67,4 +67,4 @@ I read every issue and pull request, and I answer each one, starting with a than
 
 ## Thank you
 
-Everyone who helps and would like to be named is listed here. Thank you for helping us make context-relay better.
+Everyone who helps and would like to be named is listed here. Thank you for helping us make sweet-spot better.
