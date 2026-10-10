@@ -26,7 +26,7 @@ ramp = [round(START / 1000 + (PEAK - START) / 1000 * i / STEPS) for i in range(S
 labels = ['    <text class="n" style="animation-name:c%d" x="198" y="84">%dk</text>' % (i, v) for i, v in enumerate(ramp)]
 labels.append('    <text class="n rest" style="animation-name:c%d" x="198" y="84">%dk</text>' % (STEPS + 1, END // 1000))
 SVG = '''<svg xmlns="http://www.w3.org/2000/svg" width="780" height="250" viewBox="0 0 780 250" role="img" aria-labelledby="t d">
-  <title id="t">context-relay handover, drawn as a loop</title>
+  <title id="t">sweet-spot handover, drawn as a loop</title>
   <desc id="d">The context bar fills past the threshold, the mod waits for a subagent, hands the session over and continues in a fresh one with a small context.</desc>
   <style>
     text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 15px; }
@@ -71,7 +71,7 @@ SVG = '''<svg xmlns="http://www.w3.org/2000/svg" width="780" height="250" viewBo
   <rect width="780" height="250" rx="10" fill="#0d1117"/>
   <rect width="780" height="34" rx="10" fill="#161b22"/><rect y="24" width="780" height="10" fill="#161b22"/>
   <circle cx="22" cy="17" r="5.5" fill="#ff5f56"/><circle cx="42" cy="17" r="5.5" fill="#ffbd2e"/><circle cx="62" cy="17" r="5.5" fill="#27c93f"/>
-  <text x="390" y="22" text-anchor="middle" class="dim" style="font-size:12px">context-relay</text>
+  <text x="390" y="22" text-anchor="middle" class="dim" style="font-size:12px">sweet-spot</text>
 
   <text x="36" y="84" class="dim">context</text>
   <rect x="116" y="70" width="480" height="14" rx="3" fill="#21262d"/>

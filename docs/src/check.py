@@ -44,7 +44,7 @@ expect(re.findall(r'Developed against Claude Code ([\d.]+);', readme), pinned[0]
 # The diagnostic output is for developers only: one module owns it, and an environment variable,
 # never a setting, switches it on. Tests under hooks/ cannot read source files (the host allows
 # relative imports and "claude-code" only), so this boundary is guarded here.
-VARIABLE = 'CONTEXT_RELAY_LOG_LEVEL'
+VARIABLE = 'SWEET_SPOT_LOG_LEVEL'
 tracked = subprocess.run(['git', 'ls-files'], cwd=ROOT, capture_output=True, text=True,
                          check=True).stdout.splitlines()
 

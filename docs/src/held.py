@@ -22,7 +22,7 @@ E += [
  ('cross', '<text x="390" y="146" text-anchor="middle" class="y" style="font-size:26px">✕</text>', [(67, 79)], False),
  ('empty', '<text x="478" y="152" class="y" style="font-size:12px">nothing arrived</text>', [(69, 80)], False),
  ('store', '<rect x="300" y="226" width="180" height="84" rx="8" fill="none" stroke="#30363d" stroke-dasharray="4 4"/><text x="408" y="258" class="dim" style="font-size:12px">kept</text>', [(66, 84)], False),
- ('redeliver', chip(470, 82, '/context-relay redeliver', 'b'), [(78, 98)], True),
+ ('redeliver', chip(470, 82, '/sweet-spot redeliver', 'b'), [(78, 98)], True),
  ('first', '<text x="474" y="202" class="dim" style="font-size:11px">first message</text>', [(44, 49), (88, 98)], True),
  ('capA', '<text x="390" y="334" text-anchor="middle" class="dim">typed meanwhile, the text is held and goes in with the summary</text>', [(0, 49)], False),
  ('capB', '<text x="390" y="334" text-anchor="middle" class="dim">nothing is lost: redeliver puts it in</text>', [(50, 99)], True),

@@ -193,8 +193,8 @@ export const hostWith = (on: TestOn, host: Partial<Host> = {}) => {
   // Assumed: `env.get` answers a variable by its name; HOME, TMPDIR and the log level are asked for, and anything else gets the temp
   // directory. That a read can fail at all is an assumption too: nothing measured names a cause.
   on('env.get', async (_, e) => {
-    if (e.name === 'CONTEXT_RELAY_LOG_LEVEL') await once(h, 'read log level')
-    if (e.name === 'CONTEXT_RELAY_LOG_LEVEL') return h.logLevelFails ? { deny: 'environment is not readable' } : { value: h.logLevel }
+    if (e.name === 'SWEET_SPOT_LOG_LEVEL') await once(h, 'read log level')
+    if (e.name === 'SWEET_SPOT_LOG_LEVEL') return h.logLevelFails ? { deny: 'environment is not readable' } : { value: h.logLevel }
     if (h.envError !== undefined) return { deny: h.envError }
     return { value: e.name === 'HOME' ? h.home : h.tmpdir }
   })
@@ -253,7 +253,7 @@ export const typeInto = ($: TestEngine, text: string, extra: object = {}) =>
   $.prompt.submit({ text, wait: false, origin: { kind: 'composer' }, ...extra } as never)
 
 // A person running the mod's command.
-export const runRelay = ($: TestEngine, args: string) => $.command.run({ command: 'context-relay', args } as never)
+export const runRelay = ($: TestEngine, args: string) => $.command.run({ command: 'sweet-spot', args } as never)
 
 // Wording and numbers that several test files pin. They are spelled out here on purpose: a test that imported them from the mod would never
 // notice the mod's wording change.

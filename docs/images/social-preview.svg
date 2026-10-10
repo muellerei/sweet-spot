@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-label="context-relay: hands a long Claude Code session over to a fresh one">
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-label="sweet-spot: hands a long Claude Code session over to a fresh one">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0d1117"/><stop offset="1" stop-color="#161b22"/></linearGradient>
     <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#58a6ff"/><stop offset="1" stop-color="#bc8cff"/></linearGradient>
@@ -31,7 +31,7 @@
     </g>
     <g class="card"><rect x="76" y="66" width="68" height="40" rx="9" fill="#0d1117" stroke="url(#accent)" stroke-width="3"/><rect x="88" y="78" width="36" height="6" rx="3" fill="url(#accent)"/><rect x="88" y="90" width="24" height="6" rx="3" fill="url(#accent)"/></g>
   </g>
-  <text x="640" y="400" text-anchor="middle" class="mono" font-size="96" font-weight="700" fill="#e6edf3" letter-spacing="-2">context<tspan fill="url(#accent)">-</tspan>relay</text>
+  <text x="640" y="400" text-anchor="middle" class="mono" font-size="96" font-weight="700" fill="#e6edf3" letter-spacing="-2">sweet<tspan fill="url(#accent)">-</tspan>spot</text>
   <text x="640" y="470" text-anchor="middle" class="sans" font-size="36" fill="#c9d1d9">Hands a long Claude Code session over to a fresh one</text>
   <text x="640" y="525" text-anchor="middle" class="sans" font-size="26" fill="#8b949e">before the context gets too big · at a moment when it is safe</text>
 </svg>

@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="780" height="330" viewBox="0 0 780 330" role="img" aria-labelledby="t d">
-  <title id="t">the questions context-relay asks at every pause, in order</title>
+  <title id="t">the questions sweet-spot asks at every pause, in order</title>
   <desc id="d">Five checks in a fixed order, each drawn as a symbol: a real pause, enough context, nothing running, enough time since the last attempt, dry run off. A dot passes them and the mod hands over; in a second run work is still running and the dot waits at the third check.</desc>
   <style>
     text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 15px; }
@@ -23,7 +23,7 @@
   <rect width="780" height="330" rx="10" fill="#0d1117"/>
   <rect width="780" height="34" rx="10" fill="#161b22"/><rect y="24" width="780" height="10" fill="#161b22"/>
   <circle cx="22" cy="17" r="5.5" fill="#ff5f56"/><circle cx="42" cy="17" r="5.5" fill="#ffbd2e"/><circle cx="62" cy="17" r="5.5" fill="#27c93f"/>
-  <text x="390" y="22" text-anchor="middle" class="dim" style="font-size:12px">context-relay</text>
+  <text x="390" y="22" text-anchor="middle" class="dim" style="font-size:12px">sweet-spot</text>
   <text x="36" y="58" class="dim" style="font-size:13px">at every pause, in this order; the first “no” ends the check</text>
   <line x1="36" y1="150" x2="716" y2="150" stroke="#21262d" stroke-width="2"/>
   <g id="g0"><path d="M70 78 h40 a6 6 0 0 1 6 6 v16 a6 6 0 0 1 -6 6 h-22 l-10 8 v-8 h-8 a6 6 0 0 1 -6 -6 v-16 a6 6 0 0 1 6 -6 z" stroke="#8b949e" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M81 92 l6 6 l12 -12" stroke="#3fb950" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>

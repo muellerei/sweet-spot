@@ -28,7 +28,7 @@
   <rect width="780" height="350" rx="10" fill="#0d1117"/>
   <rect width="780" height="34" rx="10" fill="#161b22"/><rect y="24" width="780" height="10" fill="#161b22"/>
   <circle cx="22" cy="17" r="5.5" fill="#ff5f56"/><circle cx="42" cy="17" r="5.5" fill="#ffbd2e"/><circle cx="62" cy="17" r="5.5" fill="#27c93f"/>
-  <text x="390" y="22" text-anchor="middle" class="dim" style="font-size:12px">context-relay</text>
+  <text x="390" y="22" text-anchor="middle" class="dim" style="font-size:12px">sweet-spot</text>
   <rect x="36" y="50" width="290" height="166" rx="8" fill="#161b22" stroke="#30363d"/>
   <text x="52" y="74" class="dim">old session</text>
   <rect x="52" y="158" width="258" height="38" rx="6" fill="#0d1117" stroke="#30363d"/>
@@ -44,7 +44,7 @@
   <g class="e" style="animation-name:cross"><text x="390" y="146" text-anchor="middle" class="y" style="font-size:26px">✕</text></g>
   <g class="e" style="animation-name:empty"><text x="478" y="152" class="y" style="font-size:12px">nothing arrived</text></g>
   <g class="e" style="animation-name:store"><rect x="300" y="226" width="180" height="84" rx="8" fill="none" stroke="#30363d" stroke-dasharray="4 4"/><text x="408" y="258" class="dim" style="font-size:12px">kept</text></g>
-  <g class="e fin" style="animation-name:redeliver"><rect x="470" y="82" width="234" height="26" rx="4" fill="#21262d" stroke="#30363d"/><text x="479" y="100" class="b">/context-relay redeliver</text></g>
+  <g class="e fin" style="animation-name:redeliver"><rect x="470" y="82" width="207" height="26" rx="4" fill="#21262d" stroke="#30363d"/><text x="479" y="100" class="b">/sweet-spot redeliver</text></g>
   <g class="e fin" style="animation-name:first"><text x="474" y="202" class="dim" style="font-size:11px">first message</text></g>
   <g class="e" style="animation-name:capA"><text x="390" y="334" text-anchor="middle" class="dim">typed meanwhile, the text is held and goes in with the summary</text></g>
   <g class="e fin" style="animation-name:capB"><text x="390" y="334" text-anchor="middle" class="dim">nothing is lost: redeliver puts it in</text></g>

@@ -1,4 +1,4 @@
-# How context-relay is built
+# How sweet-spot is built
 
 A map for reading the code: the path a handoff takes, why it is split the way it is, and the rules a change must keep. The details stay
 in the comments at the places named here; this page does not repeat them. What the host does that the design rests on is in
@@ -20,7 +20,7 @@ fork of the history writes it instead (`throughFork`). How far a failed handoff 
 of the type `Failure`.
 
 **Afterwards.** What was typed during the handoff goes in after it (`release`). A message that did not reach the fresh session stays in
-the store, and `/context-relay redeliver` submits it, into the session the `/clear` made and no other (`redeliver`).
+the store, and `/sweet-spot redeliver` submits it, into the session the `/clear` made and no other (`redeliver`).
 
 ## Why it is split this way
 

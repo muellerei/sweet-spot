@@ -16,7 +16,7 @@ def svg(theme, w, h, big=False):
     tx = 470 if not big else 560
     ty = h/2+ (4 if not big else -10)
     fs = 78 if not big else 92
-    return f'''<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}" role="img" aria-label="context-relay: hands a long Claude Code session over to a fresh one">
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}" role="img" aria-label="sweet-spot: hands a long Claude Code session over to a fresh one">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="{c['bg1']}"/><stop offset="1" stop-color="{c['bg2']}"/></linearGradient>
     <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="{c['a1']}"/><stop offset="1" stop-color="{c['a2']}"/></linearGradient>
@@ -49,7 +49,7 @@ def svg(theme, w, h, big=False):
     </g>
     <g class="card"><rect x="76" y="66" width="68" height="40" rx="9" fill="{c['bg1']}" stroke="url(#accent)" stroke-width="3"/><rect x="88" y="78" width="36" height="6" rx="3" fill="url(#accent)"/><rect x="88" y="90" width="24" height="6" rx="3" fill="url(#accent)"/></g>
   </g>
-  <text x="{tx}" y="{ty}" class="mono" font-size="{fs}" font-weight="700" fill="{c['title']}" letter-spacing="-2">context<tspan fill="url(#accent)">-</tspan>relay</text>
+  <text x="{tx}" y="{ty}" class="mono" font-size="{fs}" font-weight="700" fill="{c['title']}" letter-spacing="-2">sweet<tspan fill="url(#accent)">-</tspan>spot</text>
   <text x="{tx+4}" y="{ty+52}" class="sans" font-size="{30 if not big else 34}" fill="{c['sub']}">Hands a long Claude Code session over to a fresh one</text>
   <text x="{tx+4}" y="{ty+96}" class="sans" font-size="{21 if not big else 24}" fill="{c['small']}">before the context gets too big · at a moment when it is safe</text>
 </svg>

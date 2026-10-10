@@ -188,7 +188,7 @@ const putIn = async (io: Io, state: State, typing: string, failure: Failure | un
   try {
     await park(io, state, typing)
     io.log('warn', `held typing kept for redelivery, ${typing.length} characters`)
-    return back === undefined ? failure : joined(failure, `the typing held meanwhile could not be ${back}, \`/context-relay redeliver\` submits it`)
+    return back === undefined ? failure : joined(failure, `the typing held meanwhile could not be ${back}, \`/sweet-spot redeliver\` submits it`)
   } catch (err) {
     io.log('warn', `held typing lost, ${typing.length} characters`)
     return joined(failure, `the typing held meanwhile could not be ${back === undefined ? '' : `${back} or `}kept (${why(err)}), it is lost: ${typing}`)

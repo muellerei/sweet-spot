@@ -1,6 +1,6 @@
 # Security
 
-If you find something that could be used to attack context-relay, please
+If you find something that could be used to attack sweet-spot, please
 don't post it in public. Use the repository's private report instead: the
 Security tab, "Report a vulnerability".
 
@@ -9,7 +9,7 @@ the mod did, and what you expected. I read every report and answer it.
 
 ## What counts
 
-context-relay reads your handoff file and your prompt file, and lists the
+sweet-spot reads your handoff file and your prompt file, and lists the
 temp directory (or the folder of the file the answer names) to find a handoff. It writes no files, opens no network
 connection and starts no processes of its own. [What it can reach](README.md#what-it-can-reach)
 says the same in full, and `claude plugin validate .` shows the same list

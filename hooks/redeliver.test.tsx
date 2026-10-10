@@ -27,11 +27,11 @@ import {
 } from './test-support'
 
 // The reason a handoff failed is kept in the store, where `/clear` does not reach it, and the message that did not reach the fresh session
-// stays pending until `/context-relay redeliver` submits it.
+// stays pending until `/sweet-spot redeliver` submits it.
 
 const FIRST = firstMessage(NOTES)
 const NOTHING = 'nothing to redeliver'
-const USAGE = 'use `/context-relay redeliver` to submit again the handoff that did not reach the fresh session'
+const USAGE = 'use `/sweet-spot redeliver` to submit again the handoff that did not reach the fresh session'
 const REDELIVERING = 'redelivering the handoff'
 
 // A handoff whose first message does not reach the fresh session: it is dropped by another hook.
@@ -49,7 +49,7 @@ test('the command is registered when a session starts, and not again at its firs
   sessionWith(on)
   await startSession($)
   await startTurn($, 't1')
-  expect(seen.registered).toEqual(['context-relay'])
+  expect(seen.registered).toEqual(['sweet-spot'])
 })
 
 test('a mod loaded into a running session registers the command at its first turn, once', async ($, on) => {
@@ -58,7 +58,7 @@ test('a mod loaded into a running session registers the command at its first tur
   await startTurn($, 't1')
   await endTurn($, 'answer', { turnId: 't1' })
   await startTurn($, 't2')
-  expect(seen.registered).toEqual(['context-relay'])
+  expect(seen.registered).toEqual(['sweet-spot'])
 })
 
 test('a command the host refuses is said, and the mod goes on without it', async ($, on) => {
@@ -67,7 +67,7 @@ test('a command the host refuses is said, and the mod goes on without it', async
   sessionWith(on)
   await startSession($)
   await startTurn($, 't1')
-  expect(seen.logs).toEqual(['could not register its command (context-relay: $.command.register: taken)'])
+  expect(seen.logs).toEqual(['could not register its command (sweet-spot: $.command.register: taken)'])
 })
 
 test('a pending message from an earlier handoff is not mistaken for the typing of a later one, and stays to be redelivered', NO_GAP, async ($, on) => {
@@ -204,7 +204,7 @@ test('redeliver when the store cannot be read says why and leaves the message pe
   host.failStore.push(`get:${PENDING}`)
   await runRelay($, 'redeliver')
   await world.clock.settle()
-  expect(seen.logs.at(-1)).toBe(failure('context-relay: $.store.get: store is down'))
+  expect(seen.logs.at(-1)).toBe(failure('sweet-spot: $.store.get: store is down'))
   host.failStore = []
   await runRelay($, 'redeliver')
   await world.clock.settle()
@@ -275,7 +275,7 @@ const reasons: [string, string, (host: Host) => void, (world: SessionWorld, $: T
     'error',
     host => (host.envError = 'denied'),
     (w, $) => commandTurnEnds($, w, 'no line'),
-    'context-relay: $.env.get: denied',
+    'sweet-spot: $.env.get: denied',
     'old',
   ],
 ]

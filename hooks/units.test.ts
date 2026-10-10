@@ -339,8 +339,8 @@ test('forkKind: a reason said in words is a kind of its own, any other one is ot
 })
 
 test('promptPath: the prompt file lives under ~/.claude, whether the home directory ends in a slash or not', async () => {
-  expect(promptPath('/home/me')).toBe('/home/me/.claude/context-relay/handoff-prompt.md')
-  expect(promptPath('/home/me/')).toBe('/home/me/.claude/context-relay/handoff-prompt.md')
+  expect(promptPath('/home/me')).toBe('/home/me/.claude/sweet-spot/handoff-prompt.md')
+  expect(promptPath('/home/me/')).toBe('/home/me/.claude/sweet-spot/handoff-prompt.md')
 })
 
 test('promptFrom: a prompt file with text is the prompt, trimmed; nothing readable, a blank or a non-text leaves the default', async () => {

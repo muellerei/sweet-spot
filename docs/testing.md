@@ -1,7 +1,7 @@
 # Testing a mod against a host that is not there
 
 The tests run inside Claude Code (`claude plugin test .`), on `claude-code/testing`, with no model and no real session. Whatever the mod
-asks the host, a test answers. This page explains how context-relay builds that host in `hooks/test-support.ts`, where it differs from
+asks the host, a test answers. This page explains how sweet-spot builds that host in `hooks/test-support.ts`, where it differs from
 the real one, and what makes a test worth having. It is meant for anyone writing a mod of their own as much as for changes here.
 
 ## The pieces

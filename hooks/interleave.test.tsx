@@ -8,7 +8,7 @@ import { endTurn, FILE, hostWith, LIVE, NOTES, reachThreshold, sessionWith, star
 
 const WOULD = /would hand over/
 const RUN = `run handoff ${ASK_FOR_PATH}`
-const HELD = 'context-relay: a handoff is in progress, your message is held and goes in when it is done'
+const HELD = 'sweet-spot: a handoff is in progress, your message is held and goes in when it is done'
 
 for (const level of [undefined, 'trace']) {
   const named = level === undefined ? 'with no log' : `with the log at ${level}`

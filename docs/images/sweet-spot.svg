@@ -23,7 +23,7 @@
   <rect width="780" height="250" rx="10" fill="#0d1117"/>
   <rect width="780" height="34" rx="10" fill="#161b22"/><rect y="24" width="780" height="10" fill="#161b22"/>
   <circle cx="22" cy="17" r="5.5" fill="#ff5f56"/><circle cx="42" cy="17" r="5.5" fill="#ffbd2e"/><circle cx="62" cy="17" r="5.5" fill="#27c93f"/>
-  <text x="390" y="22" text-anchor="middle" class="dim" style="font-size:12px">context-relay</text>
+  <text x="390" y="22" text-anchor="middle" class="dim" style="font-size:12px">sweet-spot</text>
 
   <text x="40" y="68" class="fg">context in one session</text>
   <text x="740" y="68" text-anchor="end" class="dim">tokens</text>
