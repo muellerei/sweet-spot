@@ -38,7 +38,7 @@ the store, and `/context-relay redeliver` submits it, into the session the `/cle
 Each is explained in a comment at the place named.
 
 - Only an end of `answer` from the main loop is a pause; a subagent's end, Esc, an error or a refusal never is (`judge` in `register.tsx`,
-  and the `turn.complete` handler, which leaves out a subagent's end).
+  and the `classic.Stop` handler, which says why a subagent's end is left out).
 - A handoff starts only after the stop has returned; the command's turn would otherwise wait on the stop (`handOver`).
 - Typing is held first, before anything is awaited (the `prompt.submit` handler in `register`).
 - The wait for the command's turn is set up before the command runs, and only the first turn that starts after it is the command's
