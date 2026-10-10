@@ -68,26 +68,26 @@ const waitForTurnEnd = (io: Io, state: State) => {
       state.turnWait = undefined
       resolve(result)
     }
-    state.turnWait = { ignore: state.mainTurnId, own: undefined, end }
+    state.turnWait = { own: undefined, end }
     timer = io.after(TURN_TIMEOUT_MS, () => end({ failure: `the command's turn did not end within ${TURN_TIMEOUT_MS / 60_000} minutes` }))
   })
   return { ended, cancel: () => state.turnWait?.end({ failure: 'cancelled' }) }
 }
 
-// The end of the turn that was current when the wait began is not the end awaited: the stop that raised the handoff can come before that
-// turn's own `turn.complete`. Nor is the end of any turn but the command's, the first to start after the wait began (a `/loop` trigger,
-// a queued prompt); a turn whose start was not seen cannot be the command's. An answer ends the wait with its text; a failed or refused turn ends it without one, and an interrupted
-// one ends it as the user's own stop.
+// Only the end of the command's turn, the first to start after the wait began, is the end awaited; not that of any other turn (a `/loop`
+// trigger, a queued prompt), and a turn whose start was not seen cannot be the command's. The turn that raised the handoff has ended
+// before the wait begins, since a stop is judged only once its turn has ended. An answer ends the wait with its text; a failed or refused
+// turn ends it without one, and an interrupted one ends it as the user's own stop.
 export const startOfTurn = (state: State, turnId: string): boolean => {
   const wait = state.turnWait
-  if (wait !== undefined && wait.own === undefined && turnId !== wait.ignore) wait.own = turnId
+  if (wait !== undefined && wait.own === undefined) wait.own = turnId
   return wait?.own === turnId
 }
 
 export const endOfTurn = (state: State, e: { turnId: string; answer: string; reason: string }): 'own' | 'foreign' | undefined => {
   const wait = state.turnWait
   if (wait === undefined) return undefined
-  if (e.turnId === wait.ignore || e.turnId !== wait.own) return 'foreign'
+  if (e.turnId !== wait.own) return 'foreign'
   if (e.reason === 'answer') wait.end({ answer: e.answer })
   else if (e.reason === 'aborted') wait.end({ failure: "the command's turn was interrupted", cancelled: true })
   else wait.end({ failure: `the command's turn ended without an answer (${e.reason})` })

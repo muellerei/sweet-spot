@@ -82,7 +82,7 @@ test('without a command of that name nothing runs, and the reason is said', LIVE
   expect(seen.logs).toEqual([DUE, fellBack('the command "handoff" does not exist'), failure(`the command "handoff" does not exist; ${FORK_ALSO}`)])
 })
 
-test('the end of the main turn that raised the stop, coming after it, is not the end awaited', LIVE, async ($, on) => {
+test('a stop before the end of its turn waits for that end, and the end is not the one the handoff awaits', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES } })
@@ -90,6 +90,7 @@ test('the end of the main turn that raised the stop, coming after it, is not the
   await startTurn($, 't1')
   await stop($)
   await world.clock.settle()
+  expect(host.steps).toEqual([])
   await endTurn($, 'answer', { answer: `HANDOFF_PATH: ${FILE}`, turnId: 't1' })
   await world.clock.settle()
   expect(host.steps).toEqual([RUN])

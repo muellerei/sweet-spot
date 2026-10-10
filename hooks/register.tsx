@@ -270,7 +270,6 @@ export const register: Register = (on, options) => {
     turnStarted(state.pairing)
     const awaited = state.turnWait !== undefined
     const own = startOfTurn(state, e.turnId)
-    state.mainTurnId = e.turnId
     await readLevel($, settings, state)
     await introduce($, settings, state)
     const log = logTo($, state)
@@ -295,7 +294,6 @@ export const register: Register = (on, options) => {
   on('turn.complete', async ($, e, next) => {
     const main = e.agentId === undefined
     if (main) endSeen(state.pairing, e.reason)
-    if (main) state.mainTurnId = e.turnId
     const paired = main ? judgeable(state.pairing) : undefined
     const handingOver = state.handingOver
     await readLevel($, settings, state)

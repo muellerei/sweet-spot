@@ -52,7 +52,7 @@ First version. The mod only reports what it would do until `dry_run` is turned o
 
 ### Defects found and fixed while building
 
-- The stop that raised the handoff can come before the `turn.complete` of the turn it ends. The wait for the command's turn took that end for its own and read the file too early; it now ignores the turn that was current when the wait began.
+- The stop that raised the handoff can come before the `turn.complete` of the turn it ends. The wait for the command's turn took that end for its own and read the file too early. A stop now waits for the end of its turn before it is judged, so the wait begins after that end, and it takes only the end of the turn that starts after it.
 - Input typed during a handoff that was equal to earlier input was dropped from the held list; every input is held now, repeats included.
 - Input typed in the moment between the last look at the held list and the end of holding could be held and then forgotten; the last look and the end of holding are now one step.
 - A handoff left pending by an earlier attempt took the typing of the next one; each handoff starts with no message pending.

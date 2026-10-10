@@ -28,11 +28,8 @@ export type State = LevelMemo & {
   // True from the decision to hand over until the handoff has succeeded or failed. The command's own turn ends in a stop of its own, which
   // is no pause to act on (nor to report as postponed), whatever the gap says.
   handingOver: boolean
-  // The main session's latest turn, by the id of its start or end: told apart from the turn the handoff command starts, whose end is awaited.
-  mainTurnId: string | undefined
-  // Set while the end of the command's turn is awaited; `ignore` is the turn that was current when the wait began, `own` the first turn
-  // that starts after it: the command's.
-  turnWait: { ignore: string | undefined; own: string | undefined; end: (result: Ended) => void } | undefined
+  // Set while the end of the command's turn is awaited; `own` is the first turn that starts after the wait began: the command's.
+  turnWait: { own: string | undefined; end: (result: Ended) => void } | undefined
   // What the person typed while the handoff ran, in order, and has not been put in yet: what went into the first message (or the pending
   // one) is taken out.
   held: string[]
@@ -54,7 +51,6 @@ export const freshState = (): State => ({
   said: undefined,
   introduced: false,
   handingOver: false,
-  mainTurnId: undefined,
   turnWait: undefined,
   held: [],
   pending: undefined,
