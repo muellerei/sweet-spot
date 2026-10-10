@@ -122,7 +122,7 @@ const MODEL_FORK_ANSWER = modelForkAnswer('goal: finish')
 const PAUSE =
   'info: pause: context 210000 of 1000000 tokens (threshold 200000, brake 350000), 0 background tasks, 0 timers, 0 subagents, turn 10, no attempt before, decided act'
 const SETTINGS =
-  'settings: threshold 200000, dry_run off, min gap 10 minutes and 5 turns, method external-command, fallback internal-handoff, handoff command "handoff"'
+  'settings: threshold 200000, dry_run off, min gap 10 minutes and 5 turns, later_tokens 25000, method external-command, fallback internal-handoff, handoff command "handoff"'
 const lines = (logs: string[]) => logs.filter(l => !l.startsWith('info: settings:'))
 const diagnostic = (logs: string[]) => logs.filter(l => /^(warn|info|debug|trace): /.test(l))
 
@@ -510,6 +510,48 @@ test('after a compact the first pauses of the session are logged against the con
   ])
 })
 
+// The first tool call after a compact that reads a size judges it, once; one that reads none says nothing and leaves it to the next.
+test('the tool call that judges a compact logs what it found at debug, and no other call does', COMPACT_ONLY, async ($, on) => {
+  const seen = withMod(on)
+  const world = sessionWith(on)
+  hostWith(on, { ...AT('debug'), compact: COMPACT_DONE })
+  await reachThreshold($, world)
+  const call = () => $.tool.call({ tool: 'Read', file_path: '/tmp/a', tool_use_id: 'u1' } as never)
+  const judged = () => seen.logs.filter(l => l.startsWith('debug: compact left'))
+  world.tokens = undefined
+  await call()
+  expect(judged()).toEqual([])
+  world.tokens = 90_000
+  await call()
+  world.tokens = 250_000
+  await call()
+  expect(judged()).toEqual(['debug: compact left 90000 tokens, below the threshold'])
+})
+
+test('a compact the first tool call finds not enough is said once at debug, not again at the pause', COMPACT_ONLY, async ($, on) => {
+  const seen = withMod(on)
+  const world = sessionWith(on)
+  hostWith(on, { ...AT('debug'), compact: COMPACT_DONE })
+  await reachThreshold($, world)
+  world.tokens = 250_000
+  await $.tool.call({ tool: 'Read', file_path: '/tmp/a', tool_use_id: 'u1' } as never)
+  await startTurn($, 'n0')
+  await endTurn($, 'answer', { turnId: 'n0' })
+  await stop($)
+  await world.clock.settle()
+  expect(seen.logs.filter(l => l.startsWith('debug: compact left'))).toEqual(['debug: compact left the context above the threshold'])
+})
+
+test('a size the first tool call after a compact cannot read is said at debug, and the pause judges the compact', COMPACT_ONLY, async ($, on) => {
+  const seen = withMod(on)
+  const world = sessionWith(on)
+  hostWith(on, { ...AT('debug'), compact: COMPACT_DONE })
+  await reachThreshold($, world)
+  world.usageError = 'down'
+  await $.tool.call({ tool: 'Read', file_path: '/tmp/a', tool_use_id: 'u1' } as never)
+  expect(seen.logs.filter(l => l.includes('tool call'))).toEqual(['debug: could not read the context size at a tool call, the pause judges the compact'])
+})
+
 test('a pause that cannot be read is a warning once, as the line the person gets', LIVE, async ($, on) => {
   const seen = withMod(on)
   sessionWith(on, { usageError: 'down' })
@@ -670,3 +712,93 @@ for (const [name, host, answer] of scenarios) {
     expect(diagnostic(seen.logs).filter(l => SECRET.test(l))).toEqual([])
   })
 }
+
+// `/sweet-spot later`: what it made of the command at debug, the value a pause judges at in the pause line. Never what was typed.
+const LATER_DRY = { options: { dry_run: true, min_gap_minutes: 0, min_gap_turns: 0 } }
+const laterLines = (logs: string[]) => lines(diagnostic(logs)).filter(l => l.includes('later') || l.startsWith('info: pause:'))
+const pauseAt = async ($: TestEngine, world: ReturnType<typeof sessionWith>, tokens: number) => {
+  world.tokens = tokens
+  await startTurn($)
+  await endTurn($, 'answer')
+  await stop($)
+}
+const laterAt = async ($: TestEngine, world: ReturnType<typeof sessionWith>, tokens: number, args: string) => {
+  world.tokens = tokens
+  await runRelay($, args)
+}
+
+test('later is logged when it is taken, turned down and spent, and the pause line shows the value it judges at', LATER_DRY, async ($, on) => {
+  const seen = withMod(on)
+  const world = sessionWith(on)
+  hostWith(on, AT('debug'))
+  await startSession($)
+  await laterAt($, world, 190_000, 'later 50k')
+  await laterAt($, world, 195_000, 'later abc')
+  await laterAt($, world, 195_000, 'later 10k')
+  await pauseAt($, world, 240_000)
+  expect(laterLines(seen.logs)).toEqual([
+    'debug: later: from context 190000, 50000 tokens, hands over at 240000',
+    'debug: later: turned down, not a number of tokens',
+    'debug: later: turned down, not past 240000',
+    'info: pause: context 240000 of 1000000 tokens (threshold 200000, later 240000, brake 350000), 0 background tasks, 0 timers, 0 subagents, turn 10, no attempt before, decided dry-run',
+    'debug: later: spent by this handover',
+  ])
+})
+
+test('later capped at the brake, turned down at it, and over when the context shrank', LATER_DRY, async ($, on) => {
+  const seen = withMod(on)
+  const world = sessionWith(on)
+  hostWith(on, AT('debug'))
+  await startSession($)
+  await laterAt($, world, 300_000, 'later 100k')
+  await laterAt($, world, 360_000, 'later 10k')
+  await pauseAt($, world, 100_000)
+  expect(laterLines(seen.logs)).toEqual([
+    'debug: later: from context 300000, 100000 tokens, hands over at 350000, capped at the emergency brake',
+    'debug: later: turned down, at the emergency brake',
+    'debug: later: over, the context shrank below where it was asked',
+    'info: pause: context 100000 of 1000000 tokens (threshold 200000, brake 350000), 0 background tasks, 0 timers, 0 subagents, turn 10, no attempt before, decided none',
+  ])
+})
+
+test('later with settings the mod cannot trust is logged as turned down', { options: { handoff_command: '/handoff' } }, async ($, on) => {
+  const seen = withMod(on)
+  const world = sessionWith(on)
+  hostWith(on, AT('debug'))
+  await startSession($)
+  await laterAt($, world, 190_000, 'later 50k')
+  expect(laterLines(seen.logs)).toEqual(['debug: later: turned down, the settings are rejected'])
+})
+
+test('later with no reading of the context, and while a handover runs, is logged as turned down', LIVE, async ($, on) => {
+  const seen = withMod(on)
+  const world = sessionWith(on, { tokens: undefined })
+  hostWith(on, AT('debug'))
+  await startSession($)
+  await runRelay($, 'later 50k')
+  world.tokens = 210_000
+  await startTurn($, 't1')
+  await endTurn($, 'answer', { turnId: 't1' })
+  await stop($)
+  await runRelay($, 'later 50k')
+  expect(diagnostic(seen.logs).filter(l => l.includes('later:'))).toEqual([
+    'debug: later: turned down, the context size is unknown',
+    'debug: later: turned down, a handover is in progress',
+  ])
+  await world.clock.settle()
+})
+
+test('a context that cannot be read is a warning without the reason, and nothing typed is ever in a line', LATER_DRY, async ($, on) => {
+  const seen = withMod(on)
+  const world = sessionWith(on)
+  hostWith(on, AT('trace'))
+  await startSession($)
+  await laterAt($, world, 190_000, 'later SECRET-TEXT')
+  world.usageError = 'no usage'
+  await laterAt($, world, 190_000, 'later 50k')
+  expect(diagnostic(seen.logs).filter(l => l.includes('later:'))).toEqual([
+    'debug: later: turned down, not a number of tokens',
+    'warn: later: could not read the context size',
+  ])
+  expect(seen.logs.filter(l => l.includes('SECRET') || l.includes('no implementation'))).toEqual([])
+})

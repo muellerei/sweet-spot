@@ -11,6 +11,8 @@ export type Config = {
   dryRun: boolean
   minGapMinutes: number
   minGapTurns: number
+  // How far `/sweet-spot later` with no number moves a handover back, in tokens.
+  laterTokens: number
   // The main way, and the one tried when it fails before it changed the session. 'none': no second try.
   handoffMethod: Method
   handoffFallback: Method | 'none'
@@ -26,6 +28,7 @@ export const DEFAULTS: Config = {
   dryRun: false,
   minGapMinutes: 10,
   minGapTurns: 5,
+  laterTokens: 25_000,
   handoffMethod: 'internal-handoff',
   handoffFallback: 'builtin-compact',
   handoffCommand: '',
@@ -82,6 +85,7 @@ export const configOf = (options: Record<string, unknown>): ConfigResult => {
     dryRun: take('dry_run', DEFAULTS.dryRun, flag),
     minGapMinutes: take('min_gap_minutes', DEFAULTS.minGapMinutes, raw => finiteAtLeast(raw, 0, false)),
     minGapTurns: take('min_gap_turns', DEFAULTS.minGapTurns, raw => finiteAtLeast(raw, 0, true)),
+    laterTokens: take('later_tokens', DEFAULTS.laterTokens, raw => finiteAtLeast(raw, 1, true)),
     handoffMethod: take('handoff_method', DEFAULTS.handoffMethod, oneOf(METHODS)),
     handoffFallback: take('handoff_fallback', DEFAULTS.handoffFallback, oneOf([...METHODS, 'none'] as const)),
     handoffCommand: take('handoff_command', DEFAULTS.handoffCommand, commandName),

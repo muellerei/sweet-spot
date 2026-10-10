@@ -35,7 +35,8 @@ export const REDELIVERING = 'redelivering the handoff'
 
 export const NOTHING_TO_REDELIVER = 'nothing to redeliver'
 
-const USAGE = 'use `/sweet-spot redeliver` to submit again the handoff that did not reach the fresh session'
+const USAGE =
+  'use `/sweet-spot later [tokens]` to move the next handover back, or `/sweet-spot redeliver` to submit again the handoff that did not reach the fresh session'
 
 // An argument the command does not know is named, so that a guess like `wait 10000` does not read as a hint about something else.
 export const usageFor = (args: string): string => (args.trim() === '' ? USAGE : `unknown argument "${args}", ${USAGE}`)
@@ -57,6 +58,8 @@ export const HANDOFF_UNDER_WAY = 'a handover is in progress, try again when it i
 
 export const REDELIVER_UNDER_WAY = 'a redelivery is under way'
 
+export const ANSWER_RUNNING = 'an answer is running, try again when it is done'
+
 export const offLine = (errors: readonly string[]): string => `off: ${errors.join('; ')}`
 
 export const unregisteredLine = (reason: string): string => `could not register its command (${reason})`
@@ -66,6 +69,10 @@ export const CANCELLED = 'cancelled, the session is as it was'
 export const failedLine = (reason: string): string => `handover failed, ${reason}`
 
 export const unreadLine = (reason: string): string => `could not check for a handoff (${reason})`
+
+export const contextUnreadLine = (reason: string): string => `could not read the context size (${reason})`
+
+export const CONTEXT_UNKNOWN = 'context size unknown, try again after the next answer'
 
 // The emergency brake: past it the handoff goes ahead although work is running.
 const overrode = (forced: BusyReason | undefined): string => (forced === undefined ? '' : `, although ${BUSY[forced]} (emergency brake)`)

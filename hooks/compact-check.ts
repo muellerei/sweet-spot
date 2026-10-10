@@ -3,16 +3,23 @@
 
 import type { Config, Method } from './config'
 
-// `pending`: a compact succeeded and no pause has said yet whether it was enough. `insufficient`: it was not; `said` is whether the failure
+// `pending`: a compact succeeded and no reading of the size has said yet whether it was enough. `insufficient`: it was not; `said` is whether the failure
 // that follows from it has been told to the person (once for each mark).
 export type CompactCheck = { kind: 'pending' } | { kind: 'insufficient'; said: boolean } | undefined
 
-// The mark after a pause. A pause with no size changes nothing: the host reports none right after a compact, and a pause that cannot tell
-// does not decide. A size at or above the threshold turns `pending` into `insufficient`; one below it clears either.
+// The mark after a reading of the size: the first tool call after the compact, or a pause. A reading with no size changes nothing: the host
+// reports none right after a compact, and a reading that cannot tell does not decide. A size at or above the threshold turns `pending` into
+// `insufficient`; one below it clears either.
 export const checkOf = (check: CompactCheck, tokens: number | undefined, threshold: number): CompactCheck => {
   if (check === undefined || tokens === undefined) return check
   if (tokens < threshold) return undefined
   return check.kind === 'pending' ? { kind: 'insufficient', said: false } : check
+}
+
+// The debug line for what a reading of the size made of a compact still to be judged: enough, or not. None while it stays to be judged.
+export const judgedLine = (before: CompactCheck, after: CompactCheck, tokens: number | undefined): string | undefined => {
+  if (before?.kind !== 'pending' || after?.kind === 'pending') return undefined
+  return after === undefined ? `compact left ${tokens} tokens, below the threshold` : 'compact left the context above the threshold'
 }
 
 // The way that is tried first. A compact that was not enough is not tried: where it is the main method the fallback is the first, and

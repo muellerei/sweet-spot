@@ -7,7 +7,7 @@ import { endTurn, hostWith, pause, sessionWith, startSession, startTurn, stop, w
 // get a number below the minimum past it, so those rejections are tested on `configOf` directly. The settings line shows from `info` on,
 // so the log level is set: without it the test would check nothing.
 const SETTINGS =
-  'info: settings: threshold 200000, dry_run off, min gap 10 minutes and 5 turns, method internal-handoff, fallback builtin-compact, log level info'
+  'info: settings: threshold 200000, dry_run off, min gap 10 minutes and 5 turns, later_tokens 25000, method internal-handoff, fallback builtin-compact, log level info'
 
 test('the settings the mod runs with are the defaults of plugin.json', async ($, on) => {
   const seen = withMod(on)
@@ -39,6 +39,7 @@ test(
       dry_run: false,
       min_gap_minutes: 0,
       min_gap_turns: 2,
+      later_tokens: 40_000,
       handoff_method: 'external-command',
       handoff_command: 'claude-mem:handoff',
     },
@@ -48,10 +49,18 @@ test(
     hostWith(on, { logLevel: 'info' })
     await startSession($)
     expect(seen.logs).toEqual([
-      'info: settings: threshold 150000, dry_run off, min gap 0 minutes and 2 turns, method external-command, fallback builtin-compact, handoff command "claude-mem:handoff", log level info',
+      'info: settings: threshold 150000, dry_run off, min gap 0 minutes and 2 turns, later_tokens 40000, method external-command, fallback builtin-compact, handoff command "claude-mem:handoff", log level info',
     ])
   },
 )
+
+test('a later_tokens the host lets through but the mod rejects switches the mod off with the reason', { options: { later_tokens: 2.5 } }, async ($, on) => {
+  const seen = withMod(on)
+  await startSession($)
+  const text = 'off: later_tokens: 2.5 is not a whole number'
+  expect(seen.toasts).toEqual([text])
+  expect(seen.logs).toEqual([text])
+})
 
 // A changed setting or a hot reload loads the mod into a session that is already running: no session starts, and the person has to see
 // that the new values are in force.

@@ -1,7 +1,7 @@
 import { test, expect } from 'claude-code/testing'
 
 import { DEFAULTS, configOf } from './config'
-import { activeTasks, decide, effectiveThreshold, oneShots, type Decision, type Snapshot } from './decide'
+import { activeTasks, decide, effectiveThreshold, laterAt, oneShots, thresholdInForce, type Decision, type Snapshot } from './decide'
 import { DEFAULT_PROMPT, ASK_FOR_PATH, firstMessage, modelForkFailure, modelForkKind, handoffPath, newestHandoff, promptFrom, promptPath } from './handoff'
 import { endSeen, freshPairing, judgeable, stopSeen, turnStarted } from './pairing'
 import { reportOf } from './report'
@@ -18,6 +18,7 @@ test('configOf: nothing set gives the defaults, and the defaults are these', asy
     dryRun: false,
     minGapMinutes: 10,
     minGapTurns: 5,
+    laterTokens: 25_000,
     handoffMethod: 'internal-handoff',
     handoffFallback: 'builtin-compact',
     handoffCommand: '',
@@ -27,7 +28,7 @@ test('configOf: nothing set gives the defaults, and the defaults are these', asy
 })
 
 test('configOf: valid values are taken as they are', async () => {
-  const result = configOf({ threshold: 130_000, dry_run: false, min_gap_minutes: 0, min_gap_turns: 0, handoff_command: 'claude-mem:handoff' })
+  const result = configOf({ threshold: 130_000, dry_run: false, min_gap_minutes: 0, min_gap_turns: 0, later_tokens: 1, handoff_command: 'claude-mem:handoff' })
   expect(result).toEqual({
     ok: true,
     config: {
@@ -35,6 +36,7 @@ test('configOf: valid values are taken as they are', async () => {
       dryRun: false,
       minGapMinutes: 0,
       minGapTurns: 0,
+      laterTokens: 1,
       handoffMethod: 'internal-handoff',
       handoffFallback: 'builtin-compact',
       handoffCommand: 'claude-mem:handoff',
@@ -71,6 +73,15 @@ test('configOf: the minimum gap is a count of minutes and of turns, 0 or more, t
   expect(rejected({ min_gap_turns: -1 })).toEqual(['min_gap_turns: -1 is below 0'])
   expect(rejected({ min_gap_turns: 2.5 })).toEqual(['min_gap_turns: 2.5 is not a whole number'])
   expect(configOf({ min_gap_minutes: 2.5 })).toMatchObject({ ok: true, config: { minGapMinutes: 2.5 } })
+})
+
+test('configOf: later_tokens is a whole number of tokens, 1 or more', async () => {
+  expect(rejected({ later_tokens: '25000' })).toEqual(['later_tokens: "25000" is not a number'])
+  expect(rejected({ later_tokens: 0 })).toEqual(['later_tokens: 0 is below 1'])
+  expect(rejected({ later_tokens: -5 })).toEqual(['later_tokens: -5 is below 1'])
+  expect(rejected({ later_tokens: 2.5 })).toEqual(['later_tokens: 2.5 is not a whole number'])
+  expect(rejected({ later_tokens: Number.POSITIVE_INFINITY })).toEqual(['later_tokens: Infinity is not a finite number'])
+  expect(configOf({ later_tokens: 50_000 })).toMatchObject({ ok: true, config: { laterTokens: 50_000 } })
 })
 
 test('configOf: the handoff command is the name as the command list shows it, without a slash or a space', async () => {
@@ -158,6 +169,7 @@ const quiet: Snapshot = {
   now: 10_000_000_000,
   turns: 100,
   lastAttempt: undefined,
+  later: undefined,
 }
 const live = { ...DEFAULTS, dryRun: false }
 const kind = (over: Partial<Snapshot>, config = live) => decide({ ...quiet, ...over }, config).kind
@@ -226,6 +238,59 @@ test('decide: the emergency brake counts from the threshold in force, not from t
   const config = { ...live, threshold: 1_700_000 }
   expect(kind({ window: 2_000_000, tokens: 1_749_999, subagents: 1 }, config)).toBe('defer')
   expect(kind({ window: 2_000_000, tokens: 1_750_000, subagents: 1 }, config)).toBe('act')
+})
+
+// A handover moved back by `later`: asked at `from`, to hand over at `until`.
+const movedTo = (until: number, from = 100_000) => ({ later: { from, until } })
+
+test('thresholdInForce: the threshold in force with no later, else the later one, kept between it and the emergency brake', async () => {
+  const table: [number, number, { from: number; until: number } | undefined, number][] = [
+    [200_000, 1_000_000, undefined, 200_000],
+    [200_000, 200_000, undefined, 160_000],
+    [200_000, 1_000_000, { from: 190_000, until: 250_000 }, 250_000],
+    // Past the brake (threshold 200k + 150k) it is the brake.
+    [200_000, 1_000_000, { from: 190_000, until: 500_000 }, 350_000],
+    // A smaller window after the command: its brake is 180k, never a value above it or above the window.
+    [200_000, 200_000, { from: 150_000, until: 300_000 }, 180_000],
+    // A larger window after the command raises the threshold to 200k: the later one never brings a handover forward.
+    [200_000, 1_000_000, { from: 150_000, until: 180_000 }, 200_000],
+  ]
+  for (const [threshold, window, later, expected] of table)
+    expect([threshold, window, later, thresholdInForce(threshold, window, later)]).toEqual([threshold, window, later, expected])
+})
+
+test('decide: a later handover is judged at its own value, not at the threshold', async () => {
+  expect(kind({ tokens: 249_999, ...movedTo(250_000) })).toBe('none')
+  expect(decide({ ...quiet, tokens: 250_000, ...movedTo(250_000) }, live)).toEqual({ kind: 'act', tokens: 250_000 })
+  // Work running past it defers as at the threshold.
+  expect(kind({ tokens: 260_000, subagents: 1, ...movedTo(250_000) })).toBe('defer')
+})
+
+test('decide: a later handover is capped at the brake of the window at the time it is judged', async () => {
+  // Asked in a 1M window, judged in a 200k one: threshold 160k, brake 180k.
+  expect(kind({ window: 200_000, tokens: 179_999, ...movedTo(300_000) })).toBe('none')
+  expect(kind({ window: 200_000, tokens: 180_000, ...movedTo(300_000) })).toBe('act')
+})
+
+test('decide: a later handover below a threshold that a larger window raised does not bring the handover forward', async () => {
+  expect(kind({ tokens: 190_000, ...movedTo(180_000, 150_000) })).toBe('none')
+  expect(kind({ tokens: 200_000, ...movedTo(180_000, 150_000) })).toBe('act')
+})
+
+test('decide: the emergency brake hands over despite running work, a later handover or not, at threshold + 150k', async () => {
+  expect(kind({ tokens: 349_999, subagents: 1, ...movedTo(300_000) })).toBe('defer')
+  expect(decide({ ...quiet, tokens: 350_000, subagents: 1, ...movedTo(300_000) }, live)).toEqual({ kind: 'act', tokens: 350_000, forced: 'subagent' })
+  expect(decide({ ...quiet, tokens: 350_000, subagents: 1, ...movedTo(900_000) }, live)).toEqual({ kind: 'act', tokens: 350_000, forced: 'subagent' })
+})
+
+test('laterAt: a context below where later was asked ends it; no reading of the context, or one at or above, keeps it', async () => {
+  const later = { from: 190_000, until: 250_000 }
+  expect(laterAt(later, 189_999)).toBeUndefined()
+  expect(laterAt(later, 62_000)).toBeUndefined()
+  expect(laterAt(later, 190_000)).toEqual(later)
+  expect(laterAt(later, 240_000)).toEqual(later)
+  expect(laterAt(later, undefined)).toEqual(later)
+  expect(laterAt(undefined, 100_000)).toBeUndefined()
 })
 
 const MINUTE = 60_000

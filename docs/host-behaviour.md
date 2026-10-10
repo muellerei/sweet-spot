@@ -92,6 +92,15 @@ permission (the start of the tool result that `USER_REJECTED` in `handoff.ts` lo
   `classic.PermissionRequest`, and the model answers on. sweet-spot reads the decline from that text (`USER_REJECTED` in `handoff.ts`)
   in a `tool.call` hook while the command's turn runs, and cancels when no file was written because of it; a rule's denial falls back.
   If the host changes the words, the decline goes unseen and Esc falls back as it did before.
+- **A command typed while an answer runs waits for the stop and the end of the turn.** Its `command.run` came 39 ms after
+  `turn.complete`, which came after `classic.Stop`. _Measured 2026-10-10, Claude Code 2.1.296; throwaway mod that logged the three
+  events with their time, a slash command typed during a long answer._ A pause is judged before such a command runs, so a command that
+  should change how that pause is judged has to be `immediate`.
+- **An `immediate` command runs while the answer goes on.** Its `command.run` entered and returned during the answer, about 1.2 s
+  before `classic.Stop`, and the turn still ended in `answer`; `$.session.usage()` there gave the size after the last finished answer.
+  _Measured 2026-10-10, Claude Code 2.1.296; the same mod with `immediate: true`._
+- **Ctrl+Enter on a waiting command ends the answer.** The prompt offers "ctrl+enter to send now"; it ended the turn as `aborted`, with
+  no `classic.Stop`, and ran the command 42 ms later. _Measured 2026-10-10, Claude Code 2.1.296; the same mod without `immediate`._
 
 ## `$.model.fork`
 
@@ -135,6 +144,12 @@ throwaway mod for the veto. Interactive runs through tmux, from the veto on thro
 - **The turn count and the session:** `$.session.turns()` went 1, 2, 3 (the compact counts as a turn, with no `turn.start` and no stop),
   and the session id stayed. `usage().context.tokens` was `undefined` right afterwards and 62739 at the next pause, against 67070 before.
   The minimum gap needs no special case, and `redeliver` sees the same session.
+- **The first tool call after a compact reads the size the compact left.** `usage().context.tokens` at `turn.start` of the next turn was
+  still `undefined`; at its first `tool.call` of the main loop it was 62699, the compacted session and the prompt, and at the pause after
+  that turn, which read two files, 76984. Before and after `next(e)` gave the same value: the size counts the model call that asked for
+  the tool, not its result. _Measured 2026-10-10, Claude Code 2.1.296; a copy of the mod that logged `usage()` at `turn.start` and around
+  each `tool.call`, a compact at a low threshold, then a turn that read files._ The first look at a compact is therefore that call, not
+  the pause, which already holds the whole turn.
 - **An earlier measurement:** `/compact` as a prompt through `claude -p` took 25 s at 57662 tokens and left 8056.
 - **Discarded: `/compact` through `$.command.run`** (11.4 s, answer `{}`). Success, Esc and (by the types) a hook's veto all come back as
   `{}`, so the mod could neither start the fallback nor tell a cancel; after Esc `/compact` stays in the input line, and the user's

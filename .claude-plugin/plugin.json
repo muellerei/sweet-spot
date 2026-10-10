@@ -38,6 +38,13 @@
       "default": 5,
       "min": 0
     },
+    "later_tokens": {
+      "type": "number",
+      "title": "Later, with no number (tokens)",
+      "description": "How far /sweet-spot later moves the next handover back when you give it no number: the mod hands over once the context has grown this many tokens past where it was.",
+      "default": 25000,
+      "min": 1
+    },
     "handoff_method": {
       "type": "string",
       "title": "Handoff method",

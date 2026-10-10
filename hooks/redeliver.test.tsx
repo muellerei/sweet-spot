@@ -2,7 +2,9 @@ import { test, expect } from 'claude-code/testing'
 
 import { firstMessage } from './handoff'
 import {
+  answered,
   commandTurnEnds,
+  dropped,
   endTurn,
   FILE,
   hostWith,
@@ -31,18 +33,9 @@ import {
 
 const FIRST = firstMessage(NOTES)
 const NOTHING = 'nothing to redeliver'
-const USAGE = 'use `/sweet-spot redeliver` to submit again the handoff that did not reach the fresh session'
+const USAGE =
+  'use `/sweet-spot later [tokens]` to move the next handover back, or `/sweet-spot redeliver` to submit again the handoff that did not reach the fresh session'
 const REDELIVERING = 'redelivering the handoff'
-
-// A handoff whose first message does not reach the fresh session: it is dropped by another hook.
-const dropped = async ($: TestEngine, world: SessionWorld, host: Host) => {
-  host.dropSubmit = 'held by another hook'
-  await reachThreshold($, world)
-  await commandTurnEnds($, world, `HANDOFF_PATH: ${FILE}`)
-  host.dropSubmit = undefined
-}
-
-const answered = async (run: ReturnType<typeof runRelay>) => ((await run) as { text?: string }).text
 
 test('the command is registered when a session starts, and not again at its first turn', async ($, on) => {
   const seen = withMod(on)
@@ -50,6 +43,15 @@ test('the command is registered when a session starts, and not again at its firs
   await startSession($)
   await startTurn($, 't1')
   expect(seen.registered).toEqual(['sweet-spot'])
+  // Immediate: typed while an answer runs, it runs at once instead of after the pause that ends the answer has been judged.
+  expect(seen.menu).toEqual([
+    {
+      name: 'sweet-spot',
+      description: 'Move the next handover back, or submit again the handoff that did not reach the fresh session',
+      argumentHint: 'redeliver | later [tokens]',
+      immediate: true,
+    },
+  ])
 })
 
 test('a mod loaded into a running session registers the command at its first turn, once', async ($, on) => {
@@ -209,6 +211,42 @@ test('redeliver when the store cannot be read says why and leaves the message pe
   await runRelay($, 'redeliver')
   await world.clock.settle()
   expect(host.store.has(PENDING)).toBe(false)
+})
+
+// The command runs at once while an answer runs, and a redelivery submits a message: it waits until the answer is done.
+test('redeliver while an answer runs is turned down and changes nothing, and works once the answer is done', LIVE, async ($, on) => {
+  withMod(on)
+  const world = sessionWith(on)
+  const host = hostWith(on, { files: { [FILE]: NOTES } })
+  await dropped($, world, host)
+  await startTurn($, 't5')
+  expect(await answered(runRelay($, 'redeliver'))).toBe('an answer is running, try again when it is done')
+  await world.clock.settle()
+  expect(submits(host)).toEqual([`submit ${FIRST}`])
+  expect(host.store.get(PENDING)).toBe(FIRST)
+  await endTurn($, 'answer', { turnId: 't5' })
+  expect(await answered(runRelay($, 'redeliver'))).toBe(REDELIVERING)
+  await world.clock.settle()
+  expect(submits(host)).toEqual([`submit ${FIRST}`, `submit ${FIRST}`])
+})
+
+test('an answer that ends without an answer, aborted or in an error, no longer counts as running', LIVE, async ($, on) => {
+  withMod(on)
+  const world = sessionWith(on)
+  const host = hostWith(on, { files: { [FILE]: NOTES } })
+  await dropped($, world, host)
+  await startTurn($, 't5')
+  await endTurn($, 'aborted', { turnId: 't5' })
+  expect(await answered(runRelay($, 'redeliver'))).toBe(REDELIVERING)
+})
+
+// Settings it cannot trust stop the mod after the start of a turn is seen, before its end is: the answer must not seem to run on.
+test('with settings it cannot trust, redeliver after an answer has nothing to redeliver', { options: { handoff_command: '/handoff' } }, async ($, on) => {
+  withMod(on)
+  sessionWith(on)
+  await startTurn($, 't1')
+  await endTurn($, 'answer', { turnId: 't1' })
+  expect(await answered(runRelay($, 'redeliver'))).toBe(NOTHING)
 })
 
 for (const args of ['', 'help', 'redeliver now', 'REDELIVER']) {

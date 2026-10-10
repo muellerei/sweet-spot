@@ -1,6 +1,6 @@
 import { test, expect } from 'claude-code/testing'
 
-import { checkOf, firstMethod } from './compact-check'
+import { checkOf, firstMethod, judgedLine } from './compact-check'
 import { DEFAULTS } from './config'
 import {
   COMPACT_DONE,
@@ -18,8 +18,8 @@ import {
   pause,
 } from './test-support'
 
-// A compact that leaves the context above the threshold is not repeated at every pause: the next pause finds it out, and the compact is
-// treated as a failed way until a pause is below the threshold again.
+// A compact that leaves the context above the threshold is not repeated at every pause: the first tool call after it or the next pause finds
+// it out, and the compact is treated as a failed way until a pause is below the threshold again.
 
 const NO_GAP = { min_gap_minutes: 0, min_gap_turns: 0 }
 const ONLY = methods('builtin-compact', 'none', NO_GAP)
@@ -41,6 +41,17 @@ test('checkOf: the marker moves as the table says', async () => {
     ['insufficient, a size above it: stays, with its flag', said, 250_000, said],
   ]
   for (const [name, before, tokens, after] of table) expect([name, checkOf(before, tokens, 200_000)]).toEqual([name, after])
+})
+
+test('judgedLine: a line only where a reading judged a compact that was still to be judged', async () => {
+  const pending = { kind: 'pending' } as const
+  const insufficient = { kind: 'insufficient', said: false } as const
+  expect(judgedLine(pending, undefined, 90_000)).toBe('compact left 90000 tokens, below the threshold')
+  expect(judgedLine(pending, insufficient, 250_000)).toBe('compact left the context above the threshold')
+  expect(judgedLine(pending, pending, undefined)).toBeUndefined()
+  expect(judgedLine(insufficient, insufficient, 250_000)).toBeUndefined()
+  expect(judgedLine(insufficient, undefined, 90_000)).toBeUndefined()
+  expect(judgedLine(undefined, undefined, 90_000)).toBeUndefined()
 })
 
 test('firstMethod: the main method, but the fallback where the main one is a compact that was not enough, and none where there is none', async () => {
@@ -157,4 +168,52 @@ test('a compact that left the context above the threshold is logged at the pause
   await pauseAt($, world, 210_000)
   await pauseAt($, world, 210_000)
   expect(seen.logs.filter(l => l.startsWith('debug: ') && l.includes('left the context'))).toEqual(['debug: compact left the context above the threshold'])
+})
+
+// The pause after a compact already holds a whole turn: a turn that read a lot would look like a compact that did too little, and the mark
+// would hold until the context is below the threshold again, which it may never be. The first call of a tool in the main loop after the
+// compact comes before the tool's result is in, so the size it reads is what the compact left and the prompt (measured, Claude Code 2.1.296).
+const toolCall = ($: Parameters<typeof startSession>[0], extra: object = {}) =>
+  $.tool.call({ tool: 'Read', file_path: '/tmp/a', tool_use_id: 'u1', ...extra } as never)
+
+test('the first tool call after a compact judges it: a turn that reads a lot afterwards does not block the next handover', ONLY, async ($, on) => {
+  const seen = withMod(on)
+  const world = sessionWith(on)
+  const host = hostWith(on, { compact: COMPACT_DONE })
+  await startSession($)
+  await pauseAt($, world, 210_000)
+  world.tokens = 120_000
+  await toolCall($)
+  await pauseAt($, world, 260_000)
+  expect(host.steps).toEqual(['compact', 'compact'])
+  expect(seen.logs).toEqual([COMPACTING, COMPACTED, 'compacting now, context 260000 tokens', COMPACTED])
+})
+
+test('a compact that left the context above the threshold is found at the first tool call after it', ONLY, async ($, on) => {
+  const seen = withMod(on)
+  const world = sessionWith(on)
+  const host = hostWith(on, { compact: COMPACT_DONE })
+  await startSession($)
+  await pauseAt($, world, 210_000)
+  world.tokens = 205_000
+  await toolCall($)
+  world.tokens = 120_000
+  await toolCall($)
+  await pauseAt($, world, 260_000)
+  expect(host.steps).toEqual(['compact'])
+  expect(seen.logs).toEqual([COMPACTING, COMPACTED, `handover failed, ${TOO_BIG}`])
+})
+
+test("a subagent's tool call, or one with no size, does not judge the compact: the pause does", ONLY, async ($, on) => {
+  withMod(on)
+  const world = sessionWith(on)
+  const host = hostWith(on, { compact: COMPACT_DONE })
+  await startSession($)
+  await pauseAt($, world, 210_000)
+  world.tokens = 120_000
+  await toolCall($, { agentId: 'a1' })
+  world.tokens = undefined
+  await toolCall($)
+  await pauseAt($, world, 260_000)
+  expect(host.steps).toEqual(['compact'])
 })

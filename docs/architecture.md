@@ -12,6 +12,8 @@ running (background tasks, one-shot timers), and `turn.complete` says how the tu
 
 **The judgment.** `decide` in `decide.ts` answers from a snapshot whether to hand over now, postpone (and why), or do nothing. It is
 pure: the caller takes the snapshot, acts on the answer and keeps the record of the last attempt (`atPause` in `register.tsx`).
+`/sweet-spot later` moves the next handover back: `later.ts` makes the answer and the value from the context the command reads, and
+`decide` then judges at `thresholdInForce` instead of the threshold, until that handover is spent or the context shrinks (`laterAt`).
 
 **The handover.** `handOver` in `register.tsx` starts it once the stop has returned. From then on typing is held (`hold.ts`), and
 `carryOut` in `relay.ts` runs `throughMethods`: the main method first (`handoff_method`), then, where it failed before it changed the
@@ -22,7 +24,8 @@ after which the session stays and nothing is cleared or submitted. How far a fai
 `stage` of the type `Failure`; `FALLBACK_STAGES` in `relay.ts` is the one list of the stages after which the session is as it was and a
 fallback may follow. `cancelled` (the user's own stop), `submit` and `error` never fall back. After a failure at `clear` a fallback that
 needs `/clear` too is not tried. A compact that left the context above the threshold is marked (`compact-check.ts`) and not repeated
-until a pause is below the threshold again; the mark is set and cleared at the pause, before `decide` judges (`atPause`).
+until a pause is below the threshold again. The first tool call of the main loop after the compact reads the size it left
+(`checkAtToolCall`), before that turn has read anything; without one, the pause does, before `decide` judges (`atPause`).
 
 **Afterwards.** What was typed during the handoff goes in after it (`release`). A message that did not reach the fresh session stays in
 the store, and `/sweet-spot redeliver` submits it, into the session the `/clear` made and no other (`redeliver`).
@@ -34,7 +37,8 @@ the store, and `/sweet-spot redeliver` submits it, into the session the `/clear`
   because the host is assumed to follow `$` only into functions of the file that declares `register`. This rests on an assumption (see
   host-behaviour, Inside the mod); if it is wrong, the indirection can go.
 - **State lives in the module.** It survives `/clear`, so the minimum gap and `redeliver` work across a handoff, and it ends with a
-  reload, on purpose (the comment on `State` in `state.ts` says why).
+  reload, on purpose (the comment on `State` in `state.ts` says why). A handover moved back by `later` lives there too: it holds until
+  the next handover or until the context shrinks below where it was asked.
 - **One place logs.** `log.ts` decides what a level shows; only `register.tsx` touches `$.ui.log` and the environment. CONTRIBUTING,
   Debugging, covers how to turn the log on.
 
@@ -51,14 +55,20 @@ Each is explained in a comment at the place named.
 - `builtin-compact` needs the stop before `turn.complete`: the host refuses a compact from inside the stop, and the mod judges only once
   both are in. The "either order" of `pairing.ts` does not hold for it (`throughBuiltinCompact`; host-behaviour, `$.session.compact`).
 - The compact mark is set or cleared before `decide` judges and the first way is named, or the first pause after a compact that was not
-  enough would compact once more to no effect (`atPause`, `firstMethod` in `compact-check.ts`).
-- The `tool.call` hook only watches: it calls `next(e)`, returns its result unchanged, looks only while the command's turn is awaited,
-  and catches its own errors (`noteToolResult` in `relay.ts`).
+  enough would compact once more to no effect (`atPause`, `firstMethod` in `compact-check.ts`). The first tool call of the main loop
+  after the compact may set it earlier (`checkAtToolCall`): the pause already holds the whole turn.
+- The `tool.call` hook only watches: it calls `next(e)`, returns its result unchanged, and catches its own errors. It looks for a decline
+  only while the command's turn is awaited (`noteToolResult` in `relay.ts`), and reads the size only at the first call of the main loop
+  after a compact (`checkAtToolCall`).
 - The last look at the held typing and the end of holding are one step (`release`).
 - The handoff is in the store before `/clear`, until the fresh session has it (`deliver`).
 - The same session id after `/clear` means the handoff failed (`deliver`).
 - The minimum gap ends after minutes or turns, and holds after a failed attempt too (`withinGap` in `decide.ts`).
 - A handler changes the state first, then reads the log level, then logs (`register`).
+- The value a pause judges at, the answer of `later` and the pause line all come from `thresholdInForce` in `decide.ts`: capped at the
+  brake of the window as it is at that pause, never below the threshold in force.
+- The command is `immediate`, so `later` typed during an answer comes before the pause that ends it is judged (host-behaviour,
+  Commands); a handover that starts while it reads the context turns it down (`laterText` in `register.tsx`).
 
 ## The threshold
 

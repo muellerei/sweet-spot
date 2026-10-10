@@ -2,7 +2,7 @@
 // hot reload) starts from nothing, and what must survive a reload does not belong here.
 
 import type { CompactCheck } from './compact-check'
-import type { Attempt } from './decide'
+import type { Attempt, Later } from './decide'
 import type { LevelMemo } from './log'
 import { freshPairing, type Pairing } from './pairing'
 
@@ -41,11 +41,17 @@ export type State = LevelMemo & {
   // The session `/clear` made, where that pending message belongs: `redeliver` submits it nowhere else. Unset where it could not be read, and for
   // typing that was parked without a `/clear`.
   pendingIn: string | undefined
+  // The next handover moved back by `/sweet-spot later`, until it is spent or the context shrinks below where it was asked. Kept here
+  // only: a reload forgets it, like a change in /config.
+  later: Later | undefined
   // A redelivery is under way: a second one would submit the message twice.
   redelivering: boolean
+  // From the start of a turn of the main loop to its end, however it ended. The command runs at once while an answer runs (it is
+  // `immediate`), and a redelivery, which submits a message, waits for it.
+  answerRunning: boolean
   // Set once a handoff has succeeded: the context it left, and how many pauses of the fresh session were logged against it. Only a debug line reads it.
   afterHandoff: { before: number; pauses: number } | undefined
-  // Whether the last compact was enough, found out at the pauses after it (`compact-check.ts`). Not kept across a reload, like the rest: at worst
+  // Whether the last compact was enough, found out at the first tool call or pause after it (`compact-check.ts`). Not kept across a reload, like the rest: at worst
   // one compact more follows.
   compactCheck: CompactCheck
 }
@@ -60,7 +66,9 @@ export const freshState = (): State => ({
   held: [],
   pending: undefined,
   pendingIn: undefined,
+  later: undefined,
   redelivering: false,
+  answerRunning: false,
   afterHandoff: undefined,
   compactCheck: undefined,
   logLevel: 'off',

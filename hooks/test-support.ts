@@ -8,11 +8,20 @@ export type TestOn = Parameters<TestBody>[1]
 
 // The engine's own answer to what the mod shows; the tests read what was said.
 export const withMod = (on: TestOn) => {
-  const seen = { toasts: [] as string[], logs: [] as string[], debug: [] as string[], registered: [] as string[], refuse: undefined as string | undefined }
+  const seen = {
+    toasts: [] as string[],
+    logs: [] as string[],
+    debug: [] as string[],
+    registered: [] as string[],
+    // What the menu shows of each command the mod registered.
+    menu: [] as { name: string; description: string; argumentHint: string | undefined; immediate: true | undefined }[],
+    refuse: undefined as string | undefined,
+  }
   on('session.start', async (_, e) => ({ cwd: e.cwd }))
   on('command.register', async (_, e) => {
     if (seen.refuse !== undefined) return { deny: seen.refuse }
     seen.registered.push(e.name)
+    seen.menu.push({ name: e.name, description: e.description, argumentHint: e.argumentHint, immediate: e.immediate })
     return { value: { command: e.name } } as never
   })
   on('ui.toast', async (_, e) => {
@@ -40,12 +49,33 @@ export type World = {
   block: string | undefined
   // A reason the session cannot be read with at a stop.
   usageError: string | undefined
+  // Run while a read is under way, for what happens in the middle of one: the step is `usage`.
+  during: Record<string, () => Promise<void>>
+}
+
+// What happens in the middle of a step happens once; a later read of the same kind goes through.
+const once = async (h: { during: Record<string, () => Promise<void>> }, step: string) => {
+  const act = h.during[step]
+  delete h.during[step]
+  await act?.()
 }
 
 // The session as a test says it: what the mod may read at a stop. `reads` lists the questions asked, for the tests that need to know it asked none.
 export const sessionWith = (on: TestOn, world: Partial<World> = {}) => {
-  const w: World = { tokens: 210_000, window: 1_000_000, turns: 10, agents: [], rateLimits: [], reads: [], block: undefined, usageError: undefined, ...world }
+  const w: World = {
+    tokens: 210_000,
+    window: 1_000_000,
+    turns: 10,
+    agents: [],
+    rateLimits: [],
+    reads: [],
+    block: undefined,
+    usageError: undefined,
+    during: {},
+    ...world,
+  }
   on('session.usage', async () => {
+    await once(w, 'usage')
     w.reads.push('usage')
     if (w.usageError !== undefined) throw new Error(w.usageError)
     return {
@@ -129,13 +159,6 @@ export type Host = {
   // Run while a step is under way, for what a person does in the middle of a handoff: the step is `run <command>`, `model.fork`, `submit` or `set <store key>`.
   // `read log level` holds up one read of the log level, for a read that comes back after a later one.
   during: Record<string, () => Promise<void>>
-}
-
-// What a person does in the middle of a step happens once; their own doing goes through the same steps.
-const once = async (h: Host, step: string) => {
-  const act = h.during[step]
-  delete h.during[step]
-  await act?.()
 }
 
 // The session as far as a handoff touches it: the command list, the commands that run, the files, the submit. Measured against the host:
@@ -289,6 +312,17 @@ export const typeInto = ($: TestEngine, text: string, extra: object = {}) =>
 
 // A person running the mod's command.
 export const runRelay = ($: TestEngine, args: string) => $.command.run({ command: 'sweet-spot', args } as never)
+
+// What the command answered.
+export const answered = async (run: ReturnType<typeof runRelay>) => ((await run) as { text?: string }).text
+
+// A handoff whose first message does not reach the fresh session: it is dropped by another hook.
+export const dropped = async ($: TestEngine, world: SessionWorld, host: Host) => {
+  host.dropSubmit = 'held by another hook'
+  await reachThreshold($, world)
+  await commandTurnEnds($, world, `HANDOFF_PATH: ${FILE}`)
+  host.dropSubmit = undefined
+}
 
 // Wording and numbers that several test files pin. They are spelled out here on purpose: a test that imported them from the mod would never
 // notice the mod's wording change.

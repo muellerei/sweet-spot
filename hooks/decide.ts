@@ -4,6 +4,10 @@ import type { Config } from './config'
 
 export type Attempt = { at: number; turns: number }
 
+// A handover moved back by `/sweet-spot later`: asked at a context of `from`, to hand over at `until`. `until` is kept as asked, not
+// capped: the cap comes from the window, which can change before the pause that judges it.
+export type Later = { from: number; until: number }
+
 export type Snapshot = {
   // Input side of the last answer; undefined in a fresh session and after /clear.
   tokens: number | undefined
@@ -14,6 +18,7 @@ export type Snapshot = {
   now: number
   turns: number
   lastAttempt: Attempt | undefined
+  later: Later | undefined
 }
 
 // Work that is still running and reports back to the session. A handoff written now cannot hold its result, and the result would come
@@ -38,6 +43,20 @@ export const effectiveThreshold = (threshold: number, window: number): number =>
 // Counted from the threshold in force, which a small window has already lowered.
 export const brakeOf = (threshold: number, window: number): number => Math.min(Math.floor((window * 9) / 10), threshold + BRAKE_EXTRA)
 
+// The value a pause judges at: the threshold in force, or the one `later` asked for. That one is capped at the brake of the window as it
+// is now (after a change to a smaller window it would lie past the brake, or past the window, and nothing would ever hand over), and it never
+// lies below the threshold in force (after a change to a larger window it would bring the handover forward). The answer of `later`, the
+// pause's log line and `decide` all take it from here.
+export const thresholdInForce = (threshold: number, window: number, later: Later | undefined): number => {
+  const t = effectiveThreshold(threshold, window)
+  return later === undefined ? t : Math.max(t, Math.min(later.until, brakeOf(t, window)))
+}
+
+// A context below where `later` was asked has shrunk (a compact of any kind, or /clear), and ends it; no reading of the context changes
+// nothing, as with the compact check.
+export const laterAt = (later: Later | undefined, tokens: number | undefined): Later | undefined =>
+  later === undefined || tokens === undefined || tokens >= later.from ? later : undefined
+
 const busyReason = (s: Snapshot): BusyReason | undefined =>
   s.subagents > 0 ? 'subagent' : s.backgroundTasks > 0 ? 'background-task' : s.oneShotTimers > 0 ? 'one-shot-timer' : undefined
 
@@ -57,7 +76,7 @@ export const oneShots = (crons: readonly { recurring: boolean }[] | undefined): 
 export const decide = (snapshot: Snapshot, config: Config): Decision => {
   const { tokens, window } = snapshot
   const threshold = effectiveThreshold(config.threshold, window)
-  if (tokens === undefined || tokens < threshold) return { kind: 'none' }
+  if (tokens === undefined || tokens < thresholdInForce(config.threshold, window, snapshot.later)) return { kind: 'none' }
   const busy = busyReason(snapshot)
   if (busy !== undefined && tokens < brakeOf(threshold, window)) return { kind: 'defer', reason: busy, tokens }
   if (withinGap(snapshot, config)) return { kind: 'defer', reason: 'min-gap', tokens }

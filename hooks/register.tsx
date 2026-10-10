@@ -1,12 +1,14 @@
 import type { EngineInterface as Engine, Register } from 'claude-code'
 
 import { configOf, type Config, type ConfigResult } from './config'
-import { activeTasks, brakeOf, decide, effectiveThreshold, oneShots, type Decision } from './decide'
+import { activeTasks, brakeOf, decide, effectiveThreshold, laterAt, oneShots, thresholdInForce, type Decision } from './decide'
 import { hold } from './hold'
-import { checkOf, firstMethod } from './compact-check'
-import { logger, refresh, shows } from './log'
+import { LATER_OVER, laterFor, tokensOf } from './later'
+import { checkOf, firstMethod, judgedLine } from './compact-check'
+import { logger, refresh, shows, type Level } from './log'
 import { carryOut, endOfTurn, noteToolResult, redeliver, startOfTurn, throughMethods, why, type Failure, type Io, type Outcome } from './relay'
 import {
+  ANSWER_RUNNING,
   COMPACTED,
   HANDED_OVER,
   HANDOFF_UNDER_WAY,
@@ -16,6 +18,8 @@ import {
   REDELIVERED,
   usageFor,
   CANCELLED,
+  CONTEXT_UNKNOWN,
+  contextUnreadLine,
   failedLine,
   offLine,
   reportOf,
@@ -53,7 +57,7 @@ const readLevel = async ($: Engine, settings: ConfigResult, state: State) => {
   const c = settings.config
   logTo($, state)(
     'info',
-    `settings: threshold ${c.threshold}, dry_run ${c.dryRun ? 'on' : 'off'}, min gap ${c.minGapMinutes} minutes and ${c.minGapTurns} turns, method ${c.handoffMethod}, fallback ${c.handoffFallback}${usesCommand(c) ? `, handoff command ${commandShown(c.handoffCommand)}` : ''}, log level ${state.logLevel}`,
+    `settings: threshold ${c.threshold}, dry_run ${c.dryRun ? 'on' : 'off'}, min gap ${c.minGapMinutes} minutes and ${c.minGapTurns} turns, later_tokens ${c.laterTokens}, method ${c.handoffMethod}, fallback ${c.handoffFallback}${usesCommand(c) ? `, handoff command ${commandShown(c.handoffCommand)}` : ''}, log level ${state.logLevel}`,
   )
 }
 
@@ -103,7 +107,14 @@ const COMMAND = 'sweet-spot'
 
 const registerCommand = async ($: Engine, state: State) => {
   try {
-    await $.command.register({ name: COMMAND, description: 'Submit again the handoff that did not reach the fresh session', argumentHint: 'redeliver' })
+    // Immediate: a command typed while an answer runs would otherwise wait until the pause that ends the answer has been judged
+    // (docs/host-behaviour.md, Commands).
+    await $.command.register({
+      name: COMMAND,
+      description: 'Move the next handover back, or submit again the handoff that did not reach the fresh session',
+      argumentHint: 'redeliver | later [tokens]',
+      immediate: true,
+    })
   } catch (err) {
     say($, unregisteredLine(why(err)))
     logTo($, state)('warn', 'could not register the command')
@@ -137,7 +148,7 @@ const settle = async (
 }
 
 // The submit waits for the session to be idle, so it is not waited for in the command: the command answers at once.
-const redeliverLater = async ($: Engine, state: State) => {
+const runRedelivery = async ($: Engine, state: State) => {
   try {
     await settle($, state, { name: 'redelivery', done: () => REDELIVERED }, async () => ({ failure: await redeliver(sessionIo($, state), state) }))
   } finally {
@@ -146,14 +157,52 @@ const redeliverLater = async ($: Engine, state: State) => {
 }
 
 // Without usable settings (`config` undefined) the mod never handed anything over, so there is nothing to redeliver.
-const commandText = ($: Engine, config: Config | undefined, args: string, state: State): string => {
+const redeliverText = ($: Engine, config: Config | undefined, args: string, state: State): string => {
   if (args.trim() !== 'redeliver') return usageFor(args)
   if (state.handingOver) return HANDOFF_UNDER_WAY
+  if (state.answerRunning) return ANSWER_RUNNING
   if (state.redelivering) return REDELIVER_UNDER_WAY
   if (state.pending === undefined || config === undefined) return NOTHING_TO_REDELIVER
   state.redelivering = true
-  $.clock.after(0, () => void redeliverLater($, state))
+  $.clock.after(0, () => void runRedelivery($, state))
   return REDELIVERING
+}
+
+// What the command answers, and the diagnostic lines about it, which its handler writes after its read of the log level. A line never
+// holds what was typed.
+type Answer = { text: string; lines?: [Exclude<Level, 'off'>, string][] }
+
+const turnedDown = (text: string, why: string): Answer => ({ text, lines: [['debug', `later: turned down, ${why}`]] })
+
+// Moves the next handover back. It needs the context at the time it is typed, so its answer waits for that read.
+const laterText = async ($: Engine, settings: ConfigResult, rest: string, state: State): Promise<Answer> => {
+  const asked = tokensOf(rest)
+  if ('error' in asked) return turnedDown(asked.error, 'not a number of tokens')
+  if (!settings.ok) return turnedDown(offLine(settings.errors), 'the settings are rejected')
+  if (state.handingOver) return turnedDown(HANDOFF_UNDER_WAY, 'a handover is in progress')
+  // The command answers whatever goes wrong with the read; the hook's `.catch` would only pass the error to the host.
+  let context: { tokens?: number; window: number }
+  try {
+    context = (await $.session.usage()).context
+  } catch (err) {
+    return { text: contextUnreadLine(why(err)), lines: [['warn', 'later: could not read the context size']] }
+  }
+  // A pause may have started a handover during the read: a later handover set beside it would come too late for it and hold on in the
+  // fresh session.
+  if (state.handingOver) return turnedDown(HANDOFF_UNDER_WAY, 'a handover is in progress')
+  if (context.tokens === undefined) return turnedDown(CONTEXT_UNKNOWN, 'the context size is unknown')
+  const config = settings.config
+  const result = laterFor(config, context.window, context.tokens, state.later, asked.tokens === 'setting' ? config.laterTokens : asked.tokens)
+  state.later = result.later
+  return { text: result.text, lines: result.lines.map(line => ['debug', line]) }
+}
+
+// What the command does is the word after it. `later` takes an argument, so the rest is its argument; `redeliver` takes none.
+const commandText = ($: Engine, settings: ConfigResult, args: string, state: State): Promise<Answer> | Answer => {
+  const words = args.trim()
+  const verb = words.split(/\s/, 1)[0]
+  if (verb === 'later') return laterText($, settings, words.slice(verb.length), state)
+  return { text: redeliverText($, settings.ok ? settings.config : undefined, args, state) }
 }
 
 // Runs the handoff to its end and says how it went.
@@ -175,7 +224,7 @@ const handoff = async ($: Engine, config: Config, state: State, tokens: number) 
       const outcome = await carryOut(io, state, () => throughMethods(io, state, config))
       if (outcome.failure === undefined) {
         state.afterHandoff = { before: tokens, pauses: 0 }
-        // A compact is checked at the pauses after it; a handoff into a fresh session starts over.
+        // A compact is checked at the first tool call or pause after it; a handoff into a fresh session starts over.
         state.compactCheck = outcome.method === 'builtin-compact' ? { kind: 'pending' } : undefined
       }
       return outcome
@@ -205,6 +254,23 @@ const handOver = ($: Engine, decision: Extract<Decision, { kind: 'act' }>, confi
   $.clock.after(0, () => void handoff($, config, state, decision.tokens))
 }
 
+// The first call of a tool in the main loop after a compact says whether it was enough. The size counts the model call that asked for the
+// tool, not the tool's result, and reads the same before and after `next(e)`: it is what the compact left and the prompt (measured,
+// host-behaviour). The pause would already hold the whole turn, and a turn that reads a lot would look like a compact that did too little.
+// Only the first reading judges. One with no size leaves it to the next call, whose size holds at most the results before it: still nearer
+// than the pause.
+const checkAtToolCall = async ($: Engine, settings: ConfigResult, config: Config, state: State) => {
+  if (state.compactCheck?.kind !== 'pending') return
+  const { tokens, window } = (await $.session.usage()).context
+  const before = state.compactCheck
+  if (before?.kind !== 'pending') return
+  state.compactCheck = checkOf(before, tokens, effectiveThreshold(config.threshold, window))
+  const line = judgedLine(before, state.compactCheck, tokens)
+  if (line === undefined) return
+  await readLevel($, settings, state)
+  logTo($, state)('debug', line)
+}
+
 // The pauses after a handoff that are logged against the context it left: enough to see where the fresh session starts and how it grows.
 const AFTER_HANDOFF_PAUSES = 3
 
@@ -214,6 +280,10 @@ const limitsOf = (limits: readonly { kind: string; percentUsed: number }[]): str
 
 const atPause = async ($: Engine, e: Stop, config: Config, state: State) => {
   const [{ context, rateLimits }, agents, turns, now] = await Promise.all([$.session.usage(), $.agent.list(), $.session.turns(), $.clock.now()])
+  // A context below where `later` was asked has shrunk (a compact, /clear): the later handover is over before `decide` judges.
+  const kept = laterAt(state.later, context.tokens)
+  const over = state.later !== undefined && kept === undefined
+  state.later = kept
   const snapshot = {
     tokens: context.tokens,
     window: context.window,
@@ -223,8 +293,10 @@ const atPause = async ($: Engine, e: Stop, config: Config, state: State) => {
     now,
     turns,
     lastAttempt: state.lastAttempt,
+    later: state.later,
   }
   const log = logTo($, state)
+  if (over) log('debug', LATER_OVER)
   const fresh = state.afterHandoff
   if (fresh !== undefined && fresh.pauses < AFTER_HANDOFF_PAUSES && snapshot.tokens !== undefined && snapshot.tokens < fresh.before) {
     fresh.pauses += 1
@@ -235,11 +307,12 @@ const atPause = async ($: Engine, e: Stop, config: Config, state: State) => {
   const threshold = effectiveThreshold(config.threshold, snapshot.window)
   const before = state.compactCheck
   state.compactCheck = checkOf(before, snapshot.tokens, threshold)
-  if (before?.kind === 'pending' && state.compactCheck?.kind === 'insufficient') log('debug', 'compact left the context above the threshold')
+  const judged = judgedLine(before, state.compactCheck, snapshot.tokens)
+  if (judged !== undefined) log('debug', judged)
   const decision = decide(snapshot, config)
   log(
     'info',
-    `pause: context ${snapshot.tokens} of ${snapshot.window} tokens (threshold ${threshold}, brake ${brakeOf(threshold, snapshot.window)}), ${snapshot.backgroundTasks} background tasks, ${snapshot.oneShotTimers} timers, ${snapshot.subagents} subagents, turn ${turns}, ${state.lastAttempt === undefined ? 'no attempt before' : `last attempt at turn ${state.lastAttempt.turns}`}${limitsOf(rateLimits)}, decided ${decision.kind}${decision.kind === 'defer' ? ` (${decision.reason})` : ''}${'forced' in decision && decision.forced !== undefined ? `, forced past the brake by ${decision.forced}` : ''}`,
+    `pause: context ${snapshot.tokens} of ${snapshot.window} tokens (threshold ${threshold}${state.later === undefined ? '' : `, later ${thresholdInForce(config.threshold, snapshot.window, state.later)}`}, brake ${brakeOf(threshold, snapshot.window)}), ${snapshot.backgroundTasks} background tasks, ${snapshot.oneShotTimers} timers, ${snapshot.subagents} subagents, turn ${turns}, ${state.lastAttempt === undefined ? 'no attempt before' : `last attempt at turn ${state.lastAttempt.turns}`}${limitsOf(rateLimits)}, decided ${decision.kind}${decision.kind === 'defer' ? ` (${decision.reason})` : ''}${'forced' in decision && decision.forced !== undefined ? `, forced past the brake by ${decision.forced}` : ''}`,
   )
   if (decision.kind === 'none') {
     state.said = undefined
@@ -253,6 +326,9 @@ const atPause = async ($: Engine, e: Stop, config: Config, state: State) => {
   // A dry run counts as an attempt too: it shows the pace the real run would keep.
   state.said = undefined
   state.lastAttempt = { at: now, turns }
+  // `later` held for this handover, whether it goes through or not: the next one comes at the threshold.
+  if (state.later !== undefined) log('debug', 'later: spent by this handover')
+  state.later = undefined
   if (decision.kind === 'act') handOver($, decision, config, state)
   else say($, report())
 }
@@ -298,14 +374,18 @@ export const register: Register = (on, options) => {
 
   // The redelivery's timer runs outside any handler; its lines come after its own waits, by when the read here is in.
   on('command.run', { command: COMMAND }, async ($, e) => {
-    const text = commandText($, config, e.args, state)
+    const { text, lines = [] } = await commandText($, settings, e.args, state)
     await readLevel($, settings, state)
+    const log = logTo($, state)
+    for (const [level, line] of lines) log(level, line)
     return { text }
   }).catch((_, e, next) => next(e))
 
   // A reload puts the mod into a session that is already running, which raises no session start: the first turn says the settings then.
   on('turn.start', async ($, e, next) => {
     turnStarted(state.pairing)
+    // Only a mod with settings it can trust sees the end of the answer (`turn.complete` is past the gate below), so only it marks one running.
+    if (config !== undefined) state.answerRunning = true
     const awaited = state.turnWait !== undefined
     const own = startOfTurn(state, e.turnId)
     await readLevel($, settings, state)
@@ -329,8 +409,8 @@ export const register: Register = (on, options) => {
     return reason === undefined ? next(e) : { drop: reason }
   }).catch((_, e, next) => next(e))
 
-  // Watches the calls of the command's turn for the user's decline at the permission prompt; changes nothing about them. Whatever goes wrong
-  // here stays here: the call is the host's, and this hook is only a pair of eyes.
+  // Watches the calls of the command's turn for the user's decline at the permission prompt, and the first call after a compact for the size
+  // it left; changes nothing about the calls, only the mod's own state. Whatever goes wrong here stays here: the call is the host's, and this hook is only a pair of eyes.
   on('tool.call', async ($, e, next) => {
     const out = await next(e)
     try {
@@ -341,12 +421,22 @@ export const register: Register = (on, options) => {
     } catch {
       // Not noting it leaves the run as it was before: the fallback follows.
     }
+    try {
+      if (e.agentId === undefined) await checkAtToolCall($, settings, config, state)
+    } catch {
+      // A size that cannot be read leaves the compact to the pause, as before.
+      await readLevel($, settings, state)
+      logTo($, state)('debug', 'could not read the context size at a tool call, the pause judges the compact')
+    }
     return out
   })
 
   on('turn.complete', async ($, e, next) => {
     const main = e.agentId === undefined
-    if (main) endSeen(state.pairing, e.reason)
+    if (main) {
+      endSeen(state.pairing, e.reason)
+      state.answerRunning = false
+    }
     const paired = main ? judgeable(state.pairing) : undefined
     const handingOver = state.handingOver
     await readLevel($, settings, state)
