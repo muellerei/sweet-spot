@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <a href="#install">Install</a> · <a href="#why">Why</a> · <a href="#what-it-does">What it does</a> · <a href="#what-it-can-reach">What it can reach</a> · <a href="#settings">Settings</a> · <a href="#limits">Limits</a> · <a href="CHANGELOG.md">Changelog</a> · <a href="CONTRIBUTING.md">Contributing</a>
+  <a href="#install">Install</a> · <a href="#why">Why</a> · <a href="#what-it-does">What it does</a> · <a href="#handoff-or-compact">Handoff or compact</a> · <a href="#what-it-can-reach">What it can reach</a> · <a href="#settings">Settings</a> · <a href="#limits">Limits</a> · <a href="CHANGELOG.md">Changelog</a> · <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
 sweet-spot hands a long Claude Code session over before the context gets too big, at a moment when that is safe: to a fresh session that starts from a handoff, or by Claude Code's own `/compact`. "Handover" is the word for all of these. It is a Claude Code mod (a plugin of function hooks).
@@ -89,6 +89,22 @@ And the questions the mod asks at every pause, in this order. The first one that
 
 *Drawn, not recorded: an illustration of the sequence, looping.*
 
+## Handoff or compact
+
+Both ways bring the context down. They differ in what the session holds afterwards.
+
+![Past the threshold the session goes one of two ways: a handoff clears it and starts a fresh session that holds only the handoff; a compact keeps the same session with Claude Code's summary in place of the history](docs/images/ways.svg)
+
+| | Handoff (default) | Compact |
+| --- | --- | --- |
+| Afterwards | A fresh session that holds only the handoff | The same session, with Claude Code's summary in place of the history |
+| What it keeps | What the handoff prompt asks for; `~/.claude/sweet-spot/handoff-prompt.md` replaces it | What Claude Code's `/compact` keeps; the mod has no say in it |
+| Can you read it | Yes, it is the first message of the fresh session | No file; the summary goes straight into the session |
+| Time, measured | From the end of the answer to the fresh session's first message: 20 to 34 s with your own command at 202k to 224k tokens. With the built-in prompt 15 to 21 s, measured when it stood in for a missing command | The compact itself: about 15 s at 65k tokens, 56.5 s at 408k; it grows with the context |
+| Context after, measured | At the start of the fresh session: 62k to 98k tokens with your own command, 31k once with the built-in prompt | 130k at the first pause after a compact at 408k; that pause already holds the next turn |
+
+`handoff_method` picks the way and `handoff_fallback` the one tried when it fails. A handoff command of your own (`external-command`) goes the handoff way: its file starts the fresh session. See [Settings](#settings).
+
 ## What it can reach
 
 - **Reads:** your handoff file, `~/.claude/sweet-spot/handoff-prompt.md` if you made one, and a listing of the temp directory to find a handoff the answer did not name, or of the folder of the file it does name, and the environment variables `HOME` and `TMPDIR`, to find those two places.
@@ -118,7 +134,7 @@ There are several context mods. They fall into a few approaches, and this table 
 
 ## What it does not do
 
-No memory, no rules, no panel or status line. It does not compact by itself either; Claude Code's own `/compact` is one of the ways it can start. Those belong in other tools. The first version also has no countdown or button before it acts, no cache keep-warm and no log file; the [CHANGELOG](CHANGELOG.md) lists them under "Not in this version".
+No memory, no rules, no panel or status line. It has no summarizer of its own: when it compacts, it starts Claude Code's own `/compact`. Those belong in other tools. The first version also has no countdown or button before it acts, no cache keep-warm and no log file; the [CHANGELOG](CHANGELOG.md) lists them under "Not in this version".
 
 ## Settings
 
@@ -143,7 +159,7 @@ The two ways are choices in `/config`, so they cannot be mistyped; an unknown va
 
 The gap ends after the minutes **or** the turns, whichever comes first. Both are starting points; raise them if attempts come too close together.
 
-A change in `/config` takes effect at once: the host reloads the mod, which starts from a clean state, so the minimum gap, the `redeliver` pointer and a `later` are forgotten. A reload while a handoff is running (the ~30 seconds after the mod decides to hand over) ends that handoff without a message, so leave the settings alone during that time.
+A change in `/config` takes effect at once: the host reloads the mod, which starts from a clean state, so the minimum gap, the `redeliver` pointer and a `later` are forgotten. A reload while a handoff is running (the seconds after the mod decides to hand over, see [Handoff or compact](#handoff-or-compact)) ends that handoff without a message, so leave the settings alone during that time.
 
 ## Commands
 

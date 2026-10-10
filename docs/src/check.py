@@ -28,6 +28,7 @@ readme = read('README.md')
 fresh = f'{FRESH[0] // 1000}k to {FRESH[1] // 1000}k'
 
 expect(re.findall(r'A fresh session starts at (\d+k to \d+k)', readme), fresh, 'README Why, fresh session range')
+expect(re.findall(r'fresh session: (\d+k to \d+k) tokens', readme), fresh, 'README Handoff or compact, fresh session range')
 expect(re.findall(r'(\d+k) tokens, and at the end', readme), f'{THRESHOLD // 1000}k', 'README example threshold')
 expect(re.findall(r'default of `(\d+)`', readme), str(THRESHOLD), 'README Why, threshold default')
 expect(re.findall(r'\| `threshold`\s*\| `(\d+)`', readme), str(THRESHOLD), 'README settings table, threshold default')

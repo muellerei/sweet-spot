@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="780" height="280" viewBox="0 0 780 280" role="img" aria-labelledby="t d">
+  <title id="t">the two ways sweet-spot hands a session over</title>
+  <desc id="d">A context bar past the threshold of 200k splits into two ways. Handoff: the mod writes a handoff, clears the session, and a fresh session starts that holds only the handoff, which you can read as its first message. Compact: Claude Code's own /compact runs, and the same session goes on with a summary in place of the history; Claude Code decides what the summary keeps.</desc>
+  <style>
+    text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 15px; }
+    .dim { fill: #8b949e; } .fg { fill: #e6edf3; } .y { fill: #e3b341; } .g { fill: #3fb950; } .b { fill: #58a6ff; }
+    .s { font-size: 14px; }
+  </style>
+  <rect width="780" height="280" rx="10" fill="#0d1117"/>
+  <rect width="780" height="34" rx="10" fill="#161b22"/><rect y="24" width="780" height="10" fill="#161b22"/>
+  <circle cx="22" cy="17" r="5.5" fill="#ff5f56"/><circle cx="42" cy="17" r="5.5" fill="#ffbd2e"/><circle cx="62" cy="17" r="5.5" fill="#27c93f"/>
+  <text x="390" y="22" text-anchor="middle" class="dim" style="font-size:12px">sweet-spot</text>
+
+  <text x="36" y="84" class="dim">context</text>
+  <rect x="116" y="70" width="480" height="14" rx="3" fill="#e3b341"/>
+  <line x1="593" y1="64" x2="593" y2="90" stroke="#8b949e" stroke-width="1" stroke-dasharray="3 3"/>
+  <text x="593" y="56" text-anchor="middle" class="dim" style="font-size:11px">threshold 200k</text>
+
+  <!-- the split: one line down from the bar, a branch to each way -->
+  <path d="M24 96 V 196 M24 128 H 32 M24 196 H 32" fill="none" stroke="#30363d" stroke-width="2"/>
+
+  <text x="36" y="132" class="g">handoff</text>
+  <text x="140" y="132" class="fg s">writes a handoff  →  /clear  →  a fresh session</text>
+  <text x="140" y="154" class="dim s">holds only the handoff; you read it as the first message</text>
+
+  <text x="36" y="200" class="b">compact</text>
+  <text x="140" y="200" class="fg s">Claude Code's /compact  →  the same session goes on</text>
+  <text x="140" y="222" class="dim s">a summary in place of the history; Claude Code decides what it keeps</text>
+
+  <text x="740" y="262" text-anchor="end" class="dim" style="font-size:12px">Drawn, not recorded.</text>
+</svg>
