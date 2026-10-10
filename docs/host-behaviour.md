@@ -116,9 +116,18 @@ throwaway mod for the veto. Interactive runs through tmux, from the veto on thro
   session yet: compaction here runs inside a turn (a /compact prompt); catch it and carry on". No special case in the mod.
 - **Interactive from `turn.complete` works** and resolves with `{ messages: [...] }` after 14.6 s at about 65000 tokens (9.7 to 14.6 s
   over the runs). The `SessionStart:compact` hooks run.
+- **The time a compact takes grows with the context:** about 15 s at 65000 tokens, 56.5 s at 408000 (2026-10-10, 2.1.296). The next
+  pause read 130016 tokens, the compacted session plus the turn that followed. The mod sets no time limit and waits for the call.
+- **A compact is refused while a turn is in flight:** "$.session.compact: a turn is in flight; the conversation compacts between turns".
+  Seen once with two subagents running, 45 s before the same call went through with one still running, so the rule is not simply "no
+  subagent". The cause is open. The emergency brake asks despite running work, so it can meet the refusal; that is a failure at stage
+  `compact` like any other.
+- **A reload takes the mod's state, not the compact:** reloaded 2 s after the ask, the compact still finished, but the mod said nothing
+  and set no mark. Only a mod under development is reloaded while it works.
 - **Esc 3.5 s after the call rejects it** with "$.session.compact: Compaction canceled." and leaves the session as it was. sweet-spot
   looks for "Compaction canceled." in the rejection (`COMPACT_CANCELLED` in `handoff.ts`) and cancels; no other way hands over after
-  Esc. If the host changes the words, Esc becomes an ordinary refusal and the fallback runs after the cancel.
+  Esc. If the host changes the words, Esc becomes an ordinary refusal and the fallback runs after the cancel. Checked with the mod itself,
+  Esc at 147659 tokens with a fallback set: cancelled, no fallback, no handoff.
 - **A veto by another mod resolves with `{ skip: 'probe veto' }` after 9 ms;** the compact does not run, and the event carries
   `trigger: "plugin"`.
 - **Typing during the compact is held by the host itself:** `prompt.submit` fires 33 ms after the compact resolves, then an ordinary
