@@ -82,20 +82,21 @@ export const FORK_TIMEOUT_MS = 3 * 60_000
 
 export type ForkAnswer = { isAnswered: true; text: string } | { isAnswered: false; reason: string; status?: number | null }
 
-// What a fork that gave no handoff says, in words for a person.
-export const forkFailure = (answer: Extract<ForkAnswer, { isAnswered: false }>): string => {
-  switch (answer.reason) {
-    case 'nothing-to-fork':
-      return 'there is nothing to fork yet (a fresh or just cleared session)'
-    case 'api-error':
-      return `the API failed${typeof answer.status === 'number' ? ` (status ${answer.status})` : ''}`
-    case 'empty-reply':
-      return 'the fork replied with nothing'
-    case 'aborted':
-      return 'the fork was aborted'
-    case 'timeout':
-      return `the fork did not answer within ${FORK_TIMEOUT_MS / 60_000} minutes`
-    default:
-      return answer.reason
-  }
+type NoFork = Extract<ForkAnswer, { isAnswered: false }>
+
+// The reasons a fork gives nothing for that the mod knows, each in words for a person. The one list both the words and the log's kind read.
+const FORK_REASONS: Record<string, (answer: NoFork) => string> = {
+  'nothing-to-fork': () => 'there is nothing to fork yet (a fresh or just cleared session)',
+  'api-error': answer => `the API failed${typeof answer.status === 'number' ? ` (status ${answer.status})` : ''}`,
+  'empty-reply': () => 'the fork replied with nothing',
+  aborted: () => 'the fork was aborted',
+  timeout: () => `the fork did not answer within ${FORK_TIMEOUT_MS / 60_000} minutes`,
 }
+
+const known = (reason: string): boolean => Object.hasOwn(FORK_REASONS, reason)
+
+// The kind of reason a fork gave nothing for, from a fixed set: a reason the mod does not know is the host's own words and stays out.
+export const forkKind = (answer: NoFork): string => (known(answer.reason) ? answer.reason : 'other')
+
+// What a fork that gave no handoff says, in words for a person; a reason the mod does not know as the host gave it.
+export const forkFailure = (answer: NoFork): string => (known(answer.reason) ? FORK_REASONS[answer.reason](answer) : answer.reason)

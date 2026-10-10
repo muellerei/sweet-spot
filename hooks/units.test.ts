@@ -2,7 +2,7 @@ import { test, expect } from 'claude-code/testing'
 
 import { DEFAULTS, configOf } from './config'
 import { activeTasks, decide, effectiveThreshold, oneShots, type Decision, type Snapshot } from './decide'
-import { DEFAULT_PROMPT, ASK_FOR_PATH, firstMessage, forkFailure, handoffPath, newestHandoff, promptFrom, promptPath } from './handoff'
+import { DEFAULT_PROMPT, ASK_FOR_PATH, firstMessage, forkFailure, forkKind, handoffPath, newestHandoff, promptFrom, promptPath } from './handoff'
 import { endSeen, freshPairing, judgeable, stopSeen, turnStarted } from './pairing'
 import { reportOf } from './report'
 
@@ -13,7 +13,7 @@ const rejected = (options: Record<string, unknown>) => {
 
 // Typed on purpose: the test falls when a default changes in config.ts or in plugin.json (see register.test.tsx).
 test('configOf: nothing set gives the defaults, and the defaults are these', async () => {
-  const expected = { threshold: 200_000, dryRun: false, minGapMinutes: 10, minGapTurns: 5, handoffCommand: '', trace: false }
+  const expected = { threshold: 200_000, dryRun: false, minGapMinutes: 10, minGapTurns: 5, handoffCommand: '' }
   expect(DEFAULTS).toEqual(expected)
   expect(configOf({})).toEqual({ ok: true, config: expected })
 })
@@ -22,7 +22,7 @@ test('configOf: valid values are taken as they are', async () => {
   const result = configOf({ threshold: 130_000, dry_run: false, min_gap_minutes: 0, min_gap_turns: 0, handoff_command: 'claude-mem:handoff' })
   expect(result).toEqual({
     ok: true,
-    config: { threshold: 130_000, dryRun: false, minGapMinutes: 0, minGapTurns: 0, handoffCommand: 'claude-mem:handoff', trace: false },
+    config: { threshold: 130_000, dryRun: false, minGapMinutes: 0, minGapTurns: 0, handoffCommand: 'claude-mem:handoff' },
   })
 })
 
@@ -42,12 +42,6 @@ test('configOf: threshold must be a finite number of at least 130000, and is rej
   ]
   for (const [raw, error] of table) expect([raw, rejected({ threshold: raw })]).toEqual([raw, [error]])
 })
-
-test('configOf: trace is a boolean, off unless set', async () => {
-  expect(configOf({ trace: true })).toMatchObject({ ok: true, config: { trace: true } })
-  expect(rejected({ trace: 'yes' })).toEqual(['trace: "yes" is not true or false'])
-})
-
 test('configOf: dry_run is a boolean, nothing else counts as on or off', async () => {
   for (const raw of ['true', 'false', 1, 0, null, ''])
     expect([raw, rejected({ dry_run: raw })]).toEqual([raw, [`dry_run: ${JSON.stringify(raw)} is not true or false`]])
@@ -329,6 +323,19 @@ test('forkFailure: each reason a fork gives nothing is said in words, an unknown
   expect(forkFailure({ isAnswered: false, reason: 'aborted' })).toBe('the fork was aborted')
   expect(forkFailure({ isAnswered: false, reason: 'timeout' })).toBe('the fork did not answer within 3 minutes')
   expect(forkFailure({ isAnswered: false, reason: 'something-new' })).toBe('something-new')
+})
+
+test('forkKind: a reason said in words is a kind of its own, any other one is other', async () => {
+  for (const reason of ['nothing-to-fork', 'api-error', 'empty-reply', 'aborted', 'timeout']) {
+    const answer = { isAnswered: false as const, reason }
+    expect(forkFailure(answer)).not.toBe(reason)
+    expect(forkKind(answer)).toBe(reason)
+  }
+  for (const reason of ['something-new', 'toString', 'constructor']) {
+    const answer = { isAnswered: false as const, reason }
+    expect(forkFailure(answer)).toBe(reason)
+    expect(forkKind(answer)).toBe('other')
+  }
 })
 
 test('promptPath: the prompt file lives under ~/.claude, whether the home directory ends in a slash or not', async () => {

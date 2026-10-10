@@ -1,7 +1,7 @@
 # Fails when a number or version that is written by hand in more than one place has drifted.
 # The pictures take their numbers from common.py; this compares everything else against it.
 # Run: python3 docs/src/check.py   (from anywhere; Python 3, nothing to install)
-import json, os, re, sys
+import json, os, re, subprocess, sys
 from common import THRESHOLD, FRESH
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..')
@@ -41,7 +41,46 @@ if not pinned:
 expect(re.findall(r'Developed against Claude Code ([\d.]+);', readme), pinned[0] if pinned else None,
        'README developed-against version vs first entry of the workflow matrix')
 
+# The diagnostic output is for developers only: one module owns it, and an environment variable,
+# never a setting, switches it on. Tests under hooks/ cannot read source files (the host allows
+# relative imports and "claude-code" only), so this boundary is guarded here.
+VARIABLE = 'CONTEXT_RELAY_LOG_LEVEL'
+tracked = subprocess.run(['git', 'ls-files'], cwd=ROOT, capture_output=True, text=True,
+                         check=True).stdout.splitlines()
+
+for path in tracked:
+    if not path.startswith('hooks/') or path == 'hooks/register.tsx':
+        continue
+    if re.search(r'\.test\.tsx?$', path) or path == 'hooks/test-support.ts':
+        continue
+    text = read(path)
+    for needle in ('ui.log', VARIABLE):
+        if needle in text:
+            problems.append(f'{path}: {needle} belongs in hooks/register.tsx only')
+
+for path in tracked:
+    if path.startswith('hooks/') or path in ('README.md', 'CONTRIBUTING.md', 'CHANGELOG.md', 'docs/src/check.py'):
+        continue
+    try:
+        text = read(path)
+    except (UnicodeDecodeError, FileNotFoundError):
+        continue
+    if VARIABLE in text:
+        problems.append(f'{path}: names {VARIABLE}; outside hooks/ only README, CONTRIBUTING and CHANGELOG do')
+
+# The settings are exactly those the mod has defaults for, named in snake_case; so no log level can slip in, as it is an environment variable.
+settings = set(json.loads(read('.claude-plugin', 'plugin.json')).get('userConfig', {}))
+defaults = re.search(r'export const DEFAULTS: Config = \{([^}]*)\}', read('hooks', 'config.ts'))
+if not defaults:
+    problems.append('hooks/config.ts: no DEFAULTS found, the pattern no longer matches the code')
+else:
+    known = {re.sub(r'([A-Z])', lambda m: '_' + m.group(1).lower(), key) for key in re.findall(r'(\w+):', defaults.group(1))}
+    for key in sorted(settings - known):
+        problems.append(f'plugin.json: userConfig has {key!r}, which hooks/config.ts has no default for; the log level is an environment variable')
+    for key in sorted(known - settings):
+        problems.append(f'plugin.json: userConfig lacks {key!r}, which hooks/config.ts has a default for')
+
 if problems:
     print('\n'.join(problems))
     sys.exit(1)
-print('numbers and versions agree')
+print('numbers, versions and the diagnostic boundary agree')

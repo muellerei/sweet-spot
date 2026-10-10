@@ -2,12 +2,15 @@
 // hot reload) starts from nothing, and what must survive a reload does not belong here.
 
 import type { Attempt } from './decide'
+import type { LevelMemo } from './log'
 import { freshPairing, type Pairing } from './pairing'
 
 // How the awaited turn of the handoff command ended: with its answer, or without one and why.
 export type Ended = { answer: string } | { failure: string; cancelled?: true }
 
-export type State = {
+// The log level of the latest read (`LevelMemo`), which every handler that logs makes at its start; a line written outside a handler, as
+// from a timer, goes by it.
+export type State = LevelMemo & {
   // Not kept across a reload, on purpose: a reload is the person changing a setting or the developer reloading the mod, and an unattended
   // session cannot cause one, so the gap still limits every loop that can run without anyone there. A person who reloads after a failed
   // handoff wants the next try at once, which a kept record would hold back for minutes.
@@ -19,7 +22,7 @@ export type State = {
   // What the stop last said, so that a long wait or a repeated failure is said once and not at every stop: the reason of a postponement, or
   // the line of a failure to check. Cleared by anything else the stop says (or by nothing to say), so that what returns is said again.
   said: string | undefined
-  // The settings line and the command are introduced once per load, whether the load came with a session start or into a session that was
+  // The message about invalid settings and the command are introduced once per load, whether the load came with a session start or into a session that was
   // already running.
   introduced: boolean
   // True from the decision to hand over until the handoff has succeeded or failed. The command's own turn ends in a stop of its own, which
@@ -41,7 +44,7 @@ export type State = {
   pendingIn: string | undefined
   // A redelivery is under way: a second one would submit the message twice.
   redelivering: boolean
-  // Set once a handoff has succeeded: the context it left, and how many pauses of the fresh session were traced against it. Only a trace reads it.
+  // Set once a handoff has succeeded: the context it left, and how many pauses of the fresh session were logged against it. Only a debug line reads it.
   afterHandoff: { before: number; pauses: number } | undefined
 }
 
@@ -58,4 +61,6 @@ export const freshState = (): State => ({
   pendingIn: undefined,
   redelivering: false,
   afterHandoff: undefined,
+  logLevel: 'off',
+  badLogLevel: undefined,
 })

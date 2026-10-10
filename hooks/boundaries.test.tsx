@@ -1,6 +1,19 @@
 import { test, expect } from 'claude-code/testing'
 
-import { commandTurnEnds, endTurn, hostWith, reachThreshold, sessionWith, startSession, startTurn, stop, withMod, LIVE, type TestOn } from './test-support'
+import {
+  commandTurnEnds,
+  endTurn,
+  forkAnswer,
+  hostWith,
+  reachThreshold,
+  sessionWith,
+  startSession,
+  startTurn,
+  stop,
+  withMod,
+  LIVE,
+  type TestOn,
+} from './test-support'
 
 // Listens beneath each call that would leave the session, and lists the ones that were made.
 const listenForOutside = (on: TestOn) => {
@@ -57,7 +70,7 @@ test('a handoff through a fork calls neither http nor a process, and writes noth
   const calls = listenForOutside(on)
   withMod(on)
   const world = sessionWith(on)
-  const host = hostWith(on, { commands: [], fork: { isAnswered: true, text: 'notes', usage: {} } })
+  const host = hostWith(on, { commands: [], fork: forkAnswer('notes') })
   await reachThreshold($, world)
   expect(host.steps).toHaveLength(2)
   expect(calls).toEqual([])

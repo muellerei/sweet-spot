@@ -43,12 +43,6 @@
       "title": "Handoff command",
       "description": "Name of your own handoff command, as the command list shows it, without the slash. Leave empty and the mod writes the handoff itself.",
       "default": ""
-    },
-    "trace": {
-      "type": "boolean",
-      "title": "Trace",
-      "description": "Development aid: write one line per event the mod acts on into the transcript, to see why a handoff did or did not happen. Off for everyday use.",
-      "default": false
     }
   }
 }

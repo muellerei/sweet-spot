@@ -26,6 +26,27 @@ npx prettier@3 --check hooks
 
 The third line is a short call to the model, so you need to be signed in. Stuck on a step? Tell me. I'd rather fix this page than have you struggle.
 
+## Debugging
+
+The mod writes diagnostic lines to the transcript when the environment variable `CONTEXT_RELAY_LOG_LEVEL` is set. It is not a setting: nothing in the package sets it, and `claude plugin validate` shows that the mod only reads it. Each line starts with its level, and each level includes the ones before it:
+
+| Value   | What you see                                                                                                                                  |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `off`   | Nothing. Also what an unset or empty variable means.                                                                                          |
+| `warn`  | Everything that fails or falls back, even when you also get a message about it. The line names the stage, the message gives the reason.      |
+| `info`  | The milestones: the settings in effect, the decision at every pause, start and end of a handoff or a redelivery, the clear and the submit.    |
+| `debug` | What the mod made of an event: judgements, the steps inside a handoff, and errors it caught that have no visible effect.                      |
+| `trace` | What reached the mod: the raw events, without a judgement.                                                                                    |
+
+Case and surrounding spaces do not matter. Any other value, `1` and `true` included, logs at `warn` and says so in one `warn` line. No line carries text you or the model wrote, except the invalid value of the variable itself; they hold names, numbers, durations and reasons from a fixed set.
+
+Two ways to turn it on:
+
+- For one run: `CONTEXT_RELAY_LOG_LEVEL=debug claude`. It cannot be changed while that session runs.
+- For this clone: `{ "env": { "CONTEXT_RELAY_LOG_LEVEL": "debug" } }` in `.claude/settings.local.json`. A new value counts from the next turn, without a restart or `/reload-plugins`, and a `settings:` line marks each change to `info` or above. A `.env` file is not read.
+
+Leave it out of `~/.claude/settings.json`, or every session everywhere logs. Lines from before a handoff's `/clear` vanish from the window; start with `--debug-file <path>` to keep them. Events from before the variable was set cannot be logged after the fact, so a test run that looks for a rare event starts with it set.
+
 ## Pictures
 
 The banner and the drawings in `docs/` are made by small Python scripts in `docs/src/`, so a picture can be rebuilt instead of edited by hand: `sh docs/src/build.sh` (Python 3, nothing to install). The drawings say "Drawn, not recorded", in the picture or under it in the README, and the numbers in them are the measured ones from the README, kept as constants in `docs/src/common.py` and at the top of each script. `python3 docs/src/check.py` compares those, the README, `plugin.json` and the pinned Claude Code version in the workflow, and CI runs it, so a number changed in one place and not the others fails. If a change alters what a picture shows, change the script, rebuild, and look at the result in a browser, since the pictures move. Only `docs/social-preview.png` is not built by `build.sh`: it is the output of `python3 docs/src/banner.py <folder> --social`, rendered to 1280 by 640 pixels, for example with headless Chrome (`--screenshot`, `--window-size=1280,640`).

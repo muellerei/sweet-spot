@@ -1,10 +1,11 @@
 import { test, expect } from 'claude-code/testing'
 
-import { ASK_FOR_PATH, DEFAULT_PROMPT, firstMessage } from './handoff'
+import { ASK_FOR_PATH, DEFAULT_PROMPT, firstMessage, promptPath } from './handoff'
 import {
   commandTurnEnds,
   endTurn,
   FILE,
+  forkAnswer,
   hostWith,
   LIVE,
   NO_GAP,
@@ -32,8 +33,8 @@ import {
 // `/clear`, first message, held typing and `redeliver` follow, and the change of way is said with its reason.
 
 const RUN = `run handoff ${ASK_FOR_PATH}`
-const PROMPT_FILE = '/home/me/.claude/context-relay/handoff-prompt.md'
-const ANSWERED = { isAnswered: true, text: 'goal: finish the parser\nnext: the lexer', usage: {} }
+const PROMPT_FILE = promptPath('/home/me')
+const ANSWERED = forkAnswer('goal: finish the parser\nnext: the lexer')
 const HANDOFF = firstMessage(ANSWERED.text)
 const NO_COMMAND = 'the command "handoff" does not exist'
 

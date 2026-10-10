@@ -10,8 +10,8 @@ All notable changes to context-relay are listed here. The format follows [Keep a
 - `handoff_command` is empty by default, and empty now means no command: the fork writes the handoff at once, with no fallback line. A command that only shares the name `handoff` is not the user's to run. Set it to use your own.
 - The handoff request now says the session is handed over at a size limit, often in the middle of a task, and asks for what that task needs to carry on: the state, the next step, the files it touches by path, the open decisions. The same sentence leads the fork's default prompt. Aim: less for the fresh session to read again.
 - The fork's default prompt also asks for the skills the new session should call and for secrets to be redacted, as the user's own `/handoff` does.
-- With `trace` on, the first three pauses after a successful handoff are traced with the fresh session's context and the context before the handoff (`after handoff: context 90000 tokens (210000 before the handoff), pause 1`), so what the handoff costs to read again can be taken from the log.
-- With `trace` on, the pause line also shows the account's rate-limit windows (`limits five_hour 34.5%, seven_day 61%`), so a handoff can be read against the week's limit. Off a subscription there are none and the line is as before.
+- With `CONTEXT_RELAY_LOG_LEVEL` at `debug`, the first three pauses after a successful handoff are logged with the fresh session's context and the context before the handoff (`after handoff: context 90000 tokens (210000 before the handoff), pause 1`), so what the handoff costs to read again can be taken from the log.
+- With `CONTEXT_RELAY_LOG_LEVEL` at `info`, the pause line also shows the account's rate-limit windows (`limits five_hour 34.5%, seven_day 61%`), so a handoff can be read against the week's limit. Off a subscription there are none and the line is as before.
 
 ## [0.1.0] - 2026-10-08
 
@@ -24,7 +24,8 @@ First version. The mod only reports what it would do until `dry_run` is turned o
 - Postpones while a subagent, a background task or a one-shot timer runs, and says so once per reason. Past an emergency brake (150k above the threshold, at most 90 percent of the window) it goes ahead and says so.
 - Cancels the handoff when its turn is interrupted: no fork and no `/clear`, the session stays as it was. A failed or refused turn still falls back to the fork.
 - Holds what is typed while a handoff runs and submits it with the handoff; `/context-relay redeliver` submits the handoff again when the fresh session did not get it.
-- Settings `threshold`, `dry_run` (on by default), `min_gap_minutes`, `min_gap_turns`, `handoff_command` and `trace` (off by default; one line per event in the transcript, for finding out why a handoff did or did not happen). A value that does not fit is refused with its reason and the mod stays off, instead of being replaced by a default.
+- Settings `threshold`, `dry_run` (on by default), `min_gap_minutes`, `min_gap_turns` and `handoff_command`. A value that does not fit is refused with its reason and the mod stays off, instead of being replaced by a default.
+- Diagnostic lines in the transcript, for finding out why a handoff did or did not happen. They are off unless the environment variable `CONTEXT_RELAY_LOG_LEVEL` is set to `warn`, `info`, `debug` or `trace`; it is not a setting, so it is never shipped, shown in `/config` or on by default. A new value in the `env` block of a settings file counts from the next turn.
 
 ### Measured in real handovers
 
@@ -33,7 +34,7 @@ First version. The mod only reports what it would do until `dry_run` is turned o
 - The handoff arrived as the first message of the fresh session, framed by the host as a plugin message, readable and complete.
 - `/clear` and the submit run at the pause as intended, in that order, under 50 ms apart.
 - With subagents running past the threshold it postponed with one line ("handoff postponed, a subagent is running") and stayed quiet at the pauses after it; it handed over at the first pause after the last subagent had finished. The emergency brake was not reached.
-- With `trace` on, one handover wrote every expected line once and in order: threshold and brake in the pause line, the handoff command listed, started and its turn recognised, the path named in the answer, the file read, `/clear`, the submit and its end. The lines for a foreign turn ending first and for held typing did not occur, because neither happened.
+- With `CONTEXT_RELAY_LOG_LEVEL` at `debug`, one handover wrote every expected line once and in order: threshold and brake in the pause line, the handoff command listed, started and its turn recognised, the path named in the answer, the file read, `/clear`, the submit and its end. The lines for a foreign turn ending first and for held typing did not occur, because neither happened.
 - A change in `/config` reloads the mod and resets its state.
 - Esc during the handoff turn aborts it 30 ms in, before the command wrote anything: no `Stop` is sent, the mod cancels the handoff, and the next end of an answer starts it again.
 - The emergency brake went ahead past a running background task (at 299832 tokens, threshold 130000).

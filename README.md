@@ -79,13 +79,13 @@ What happens to what you type while a handoff runs, and what `redeliver` is for:
 
 ![What you type during a handover is held and goes into the fresh session; if the submit fails, redeliver puts it in](docs/typing.svg)
 
-_Drawn, not recorded: an illustration of the sequence, looping._
+*Drawn, not recorded: an illustration of the sequence, looping.*
 
 And the questions the mod asks at every pause, in this order. The first one that says stop ends the check:
 
 ![The five questions at every pause: a normal end of the answer, the threshold, running work, the minimum gap, dry run](docs/decision.svg)
 
-_Drawn, not recorded: an illustration of the sequence, looping._
+*Drawn, not recorded: an illustration of the sequence, looping.*
 
 ## What it can reach
 
@@ -122,28 +122,31 @@ No memory, no rules, no panel or status line, no compacting in place. Those belo
 
 In the `/config` menu under context-relay.
 
-| Setting           | Default   | What it does                                                                                                                                   |
-| ----------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `threshold`       | `200000`  | Context size in tokens at which it hands over. Values below `130000` are refused. On a small window it is lowered to 80 percent of the window. |
-| `dry_run`         | off       | Only say that a handoff would happen, and do nothing. Turn on to watch what the mod would do before it acts.                                   |
-| `min_gap_minutes` | `10`      | Least time between two attempts. `0` turns the whole gap off.                                                                                  |
-| `min_gap_turns`   | `5`       | Least number of turns between two attempts. `0` turns the whole gap off.                                                                       |
-| `handoff_command` | empty     | Name of your own handoff command, without the slash. Empty: the mod writes the handoff itself through the fork.                                |
-| `trace`           | `false`   | Development aid: one line per event in the transcript, to see why a handoff did or did not happen.                                             |
+| Setting           | Default  | What it does                                                                                                                                   |
+| ----------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `threshold`       | `200000` | Context size in tokens at which it hands over. Values below `130000` are refused. On a small window it is lowered to 80 percent of the window. |
+| `dry_run`         | off      | Only say that a handoff would happen, and do nothing. Turn on to watch what the mod would do before it acts.                                   |
+| `min_gap_minutes` | `10`     | Least time between two attempts. `0` turns the whole gap off.                                                                                  |
+| `min_gap_turns`   | `5`      | Least number of turns between two attempts. `0` turns the whole gap off.                                                                       |
+| `handoff_command` | empty    | Name of your own handoff command, without the slash. Empty: the mod writes the handoff itself through the fork.                                |
 
 The gap ends after the minutes **or** the turns, whichever comes first. Both are starting points; raise them if attempts come too close together.
 
-The mod writes its settings to the debug log once per load (the line starts with `settings:`), so you can check that a change arrived. A change in `/config` takes effect at once: the host reloads the mod, which starts from a clean state, so the minimum gap and the `redeliver` pointer are forgotten. A reload while a handoff is running (the ~30 seconds after the mod decides to hand over) ends that handoff without a message, so leave the settings alone during that time.
+A change in `/config` takes effect at once: the host reloads the mod, which starts from a clean state, so the minimum gap and the `redeliver` pointer are forgotten. A reload while a handoff is running (the ~30 seconds after the mod decides to hand over) ends that handoff without a message, so leave the settings alone during that time.
 
 ## Limits
 
-- It waits only for what the host reports as a subagent, a background task or a one-shot timer. Work the host does not report, it cannot see. With `trace` on, every pause line counts them ("0 background tasks, 0 timers, 0 subagents"), so you can see what it saw when it decided.
+- It waits only for what the host reports as a subagent, a background task or a one-shot timer. Work the host does not report, it cannot see.
 - A reason for postponing is said once, not at every stop. When the reason changes, or the wait ends and returns, it is said again.
 - A dry run counts as an attempt and starts the minimum gap, so you do not get a new "would hand over" at every turn.
 - `redeliver` submits only into the fresh session that `/clear` made, and says so if you are in another one (after a `/resume`, say). Only a handoff that failed at the submit can be redelivered, and only until the mod is reloaded; after a reload it says "nothing to redeliver".
 - While a handoff runs, a message with an attachment is turned away, because the mod cannot reach the attachment. Send it again afterwards. Slash commands still run.
 - Claude Code starts its turn counter over after `/clear`, while the mod still remembers the turn of the last attempt. The turn part of the gap therefore ends only once the new counter is `min_gap_turns` past the old number; the time part is what ends it sooner.
 - A handoff command of your own needs permission to run a shell command and to write a file in the temp directory. Without an allow rule for them, Claude Code asks, and the question holds the handoff. The mod says nothing while it waits; after 5 minutes it gives up on the command and falls back to the fork. Answering the question (or Esc, which also falls back to the fork) ends the wait sooner. Allow `Bash` and `Write` for the temp directory if you want it unattended.
+
+### If a handoff does not happen
+
+Start Claude Code with `CONTEXT_RELAY_LOG_LEVEL=info claude`. At every end of an answer the mod then writes a pause line to the transcript that shows what it saw and what it decided ("0 background tasks, 0 timers, 0 subagents", "decided none"). Please add those lines to a bug report. If a handoff goes wrong after it has started, the lines vanish from the window with its `/clear`; start with `claude --debug-file <path>` as well and attach the lines from that file. Instead of setting the variable at the start, you can put it in the `env` block of a settings file such as `.claude/settings.local.json`; a change there counts from the next turn, without a restart. It is not a setting of the mod and has no place in `/config`. The levels are explained in [CONTRIBUTING.md](CONTRIBUTING.md#debugging).
 
 ## Try it
 

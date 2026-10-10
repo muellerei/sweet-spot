@@ -7,6 +7,7 @@ import {
   firstMessage,
   FORK_TIMEOUT_MS,
   forkFailure,
+  forkKind,
   handoffPath,
   newestHandoff,
   promptFrom,
@@ -18,6 +19,7 @@ import {
   type ForkAnswer,
 } from './handoff'
 import { fellBackLine } from './report'
+import type { Level } from './log'
 import type { Ended, State } from './state'
 
 // What the flow asks of the session. The host follows `$` only into functions of the file that declares `register`, so the calls on `$`
@@ -34,8 +36,8 @@ export type Io = {
   fork: (prompt: string) => Promise<ForkAnswer>
   // Says a change of way where the person looks.
   tell: (text: string) => void
-  // One line for the development trace; says nothing unless the setting is on.
-  trace: (text: string) => void
+  // One line of the diagnostic output; shows only at the log level in force.
+  log: (level: Exclude<Level, 'off'>, text: string) => void
   submit: (text: string) => Promise<{ drop?: string }>
   sessionId: () => Promise<string>
   // The store outlives the session and a reload; `/clear` does not touch it.
@@ -112,7 +114,7 @@ const submitChecked = async (io: Io, text: string) => {
 const dropPending = async (io: Io, state: State, key: string) => {
   state.pending = undefined
   state.pendingIn = undefined
-  await io.forget(key).catch(() => {})
+  await io.forget(key).catch(() => io.log('debug', 'could not forget the pending message'))
 }
 
 const notDelivered = (err: unknown, file?: string): Failure =>
@@ -128,7 +130,7 @@ const deliver = async (io: Io, state: State, text: string, file?: string): Promi
   const key = pendingKey(before)
   await io.keep(key, message)
   state.pending = key
-  io.trace(`clear, session ${before}`)
+  io.log('info', `clear, session ${before}`)
   try {
     await io.run('clear')
   } catch (err) {
@@ -137,7 +139,10 @@ const deliver = async (io: Io, state: State, text: string, file?: string): Promi
   }
   // The session the host reports once `/clear` has returned (measured: the fresh one). The same id means `/clear` did nothing, and the
   // handoff would go into the session it was meant to leave.
-  const after = await io.sessionId().catch(() => undefined)
+  const after = await io.sessionId().catch(() => {
+    io.log('debug', 'session id unknown after the clear')
+    return undefined
+  })
   if (after === before) {
     await dropPending(io, state, key)
     return failed('clear', '/clear returned but the session is the same, the session is as it was')
@@ -145,14 +150,14 @@ const deliver = async (io: Io, state: State, text: string, file?: string): Promi
   // From here the held typing up to `included` is in the message, wherever that ends up.
   state.held.splice(0, included)
   state.pendingIn = after
-  if (included > 0) io.trace(`held inputs in the message: ${included}`)
-  io.trace(`submit, session ${after ?? 'unknown'}, ${message.length} characters`)
+  if (included > 0) io.log('debug', `held inputs in the message: ${included}`)
+  io.log('info', `submit, session ${after ?? 'unknown'}, ${message.length} characters`)
   try {
     await submitChecked(io, message)
   } catch (err) {
     return notDelivered(err, file)
   }
-  io.trace('submit done')
+  io.log('info', 'submit done')
   await dropPending(io, state, key)
   return undefined
 }
@@ -174,7 +179,7 @@ const putIn = async (io: Io, state: State, typing: string, failure: Failure | un
   if (state.pending === undefined) {
     try {
       await submitChecked(io, typing)
-      io.trace(`held typing put in, ${typing.length} characters`)
+      io.log('info', `held typing put in, ${typing.length} characters`)
       return failure
     } catch (err) {
       back = `put back (${why(err)})`
@@ -182,10 +187,10 @@ const putIn = async (io: Io, state: State, typing: string, failure: Failure | un
   }
   try {
     await park(io, state, typing)
-    io.trace(`held typing kept for redelivery, ${typing.length} characters`)
+    io.log('warn', `held typing kept for redelivery, ${typing.length} characters`)
     return back === undefined ? failure : joined(failure, `the typing held meanwhile could not be ${back}, \`/context-relay redeliver\` submits it`)
   } catch (err) {
-    io.trace(`held typing lost, ${typing.length} characters`)
+    io.log('warn', `held typing lost, ${typing.length} characters`)
     return joined(failure, `the typing held meanwhile could not be ${back === undefined ? '' : `${back} or `}kept (${why(err)}), it is lost: ${typing}`)
   }
 }
@@ -210,6 +215,7 @@ const record = async (io: Io, sessionId: string, failure: Failure | undefined) =
     else await io.keep(FAILURE, { at: await io.now(), sessionId, ...failure })
   } catch {
     // The line that says the reason is the other copy of it.
+    io.log('debug', failure === undefined ? 'could not forget the failure' : 'could not keep the failure')
   }
 }
 
@@ -241,7 +247,11 @@ const pendingMessage = async (io: Io, state: State): Promise<{ key: string; text
 
 // Submits again the first message that did not reach the fresh session, into the session as it is: no `/clear`.
 export const redeliver = async (io: Io, state: State): Promise<Failure | undefined> => {
-  const sessionId = await io.sessionId().catch(() => 'unknown')
+  io.log('info', 'redeliver starts')
+  const sessionId = await io.sessionId().catch(() => {
+    io.log('debug', 'session id unknown at redelivery')
+    return 'unknown'
+  })
   let failure: Failure | undefined
   try {
     const { key, text } = await pendingMessage(io, state)
@@ -252,18 +262,19 @@ export const redeliver = async (io: Io, state: State): Promise<Failure | undefin
     failure = failed('error', why(err))
   }
   await record(io, sessionId, failure)
+  io.log('info', `redeliver ends, ${failure === undefined ? 'delivered' : 'not delivered'}`)
   return failure
 }
 
 const throughCommand = async (io: Io, state: State, command: string): Promise<Failure | undefined> => {
   // The name is compared whole: `claude-mem:handoff` stands beside `handoff` in the list and is not the user's command.
   if (!(await io.commands()).includes(command)) return failed('command', `the command "${command}" does not exist`)
-  io.trace(`command "${command}" is listed`)
+  io.log('debug', `command "${command}" is listed`)
   const since = await io.now()
   const wait = waitForTurnEnd(io, state)
   try {
     await io.run(command, ASK_FOR_PATH)
-    io.trace('command started, waiting for its turn')
+    io.log('debug', 'command started, waiting for its turn')
   } catch (err) {
     wait.cancel()
     return failed('command', `the command "${command}" did not start (${why(err)})`)
@@ -272,8 +283,12 @@ const throughCommand = async (io: Io, state: State, command: string): Promise<Fa
   if ('failure' in end) return failed(end.cancelled ? 'cancelled' : 'turn', end.failure)
   const named = handoffPath(end.answer)
   const file = named ?? (await newestInTemp(io, since))
-  io.trace(
-    `the command's turn ended, ${named !== undefined ? `the answer names ${named}` : `the answer names no file, ${file === undefined ? 'the temp directory has none' : `the temp directory has ${file}`}`}`,
+  io.log('trace', "the command's turn ended")
+  io.log(
+    'debug',
+    named !== undefined
+      ? `the answer names ${named}`
+      : `the answer names no file, ${file === undefined ? 'the temp directory has none' : `the temp directory has ${file}`}`,
   )
   if (file === undefined) return failed('path', 'the answer names no handoff file and the temp directory has none from this run')
   if (named !== undefined) {
@@ -289,7 +304,7 @@ const throughCommand = async (io: Io, state: State, command: string): Promise<Fa
     return failed('read', `the handoff file could not be read (${why(err)})`)
   }
   if (typeof handoff !== 'string' || handoff.trim() === '') return failed('read', 'the handoff file is empty')
-  io.trace(`file read, ${handoff.length} characters`)
+  io.log('debug', `file read, ${handoff.length} characters`)
   return deliver(io, state, firstMessage(handoff), file)
 }
 
@@ -325,13 +340,14 @@ const throughFork = async (io: Io, state: State): Promise<Failure | undefined> =
   const began = await io.now()
   try {
     const { prompt, source } = await forkPrompt(io)
-    io.trace(`fork asked, ${source}`)
+    io.log('debug', `fork asked, ${source}`)
     answer = await forkWithin(io, prompt)
   } catch (err) {
     return failed('fork', `the fork gave no handoff: the fork failed (${why(err)})`)
   }
   const took = `after ${(await io.now()) - began} ms`
-  io.trace(answer.isAnswered ? `fork answered, ${answer.text.length} characters, ${took}` : `fork gave nothing, ${forkFailure(answer)}, ${took}`)
+  if (answer.isAnswered) io.log('info', `fork answered, ${answer.text.length} characters, ${took}`)
+  else io.log('warn', `fork gave nothing (${forkKind(answer)}), ${took}`)
   if (!answer.isAnswered) return failed('fork', `the fork gave no handoff: ${forkFailure(answer)}`)
   if (answer.text.trim() === '') return failed('fork', 'the fork gave no handoff: the fork replied with no text')
   return deliver(io, state, firstMessage(answer.text))
@@ -348,6 +364,7 @@ export const throughChain = async (io: Io, state: State, command: string): Promi
   const first = await throughCommand(io, state, command)
   if (first === undefined || !MISSING.includes(first.stage)) return first
   io.tell(fellBackLine(first.reason))
+  io.log('warn', `fork fallback (stage ${first.stage})`)
   const second = await throughFork(io, state)
   return second?.stage === 'fork' ? { ...second, reason: `${first.reason}; ${second.reason}` } : second
 }

@@ -102,6 +102,10 @@ export type Host = {
   rejectSubmitAfter: number
   // A reason the environment cannot be read, which no part of the handoff expects.
   envError: string | undefined
+  // The value of the variable that sets the log level, unset by default; and whether reading that variable, and only that one, fails.
+  // `envError` does not touch it: a test about the handoff's own reads keeps its log level.
+  logLevel: string | undefined
+  logLevelFails: boolean
   // In order, what the mod did to the session: `run <command> <args>` and `submit <text>`.
   steps: string[]
   // What a fork of the history answers with, or that it never answers or throws; `forked` lists the prompts it was asked.
@@ -110,10 +114,13 @@ export type Host = {
   // The session's id, which a /clear changes unless `clearKeepsSession` is set (a /clear that returned without effect).
   sessionId: string
   clearKeepsSession: boolean
+  // Whether reading the session's id fails, from the moment it is set.
+  sessionIdFails: boolean
   // What the store holds, and the store calls that fail, as `<op>:<key>` (`set:failure`; `*` for any key).
   store: Map<string, unknown>
   failStore: string[]
   // Run while a step is under way, for what a person does in the middle of a handoff: the step is `run <command>`, `fork`, `submit` or `set <store key>`.
+  // `read log level` holds up one read of the log level, for a read that comes back after a later one.
   during: Record<string, () => Promise<void>>
 }
 
@@ -139,10 +146,13 @@ export const hostWith = (on: TestOn, host: Partial<Host> = {}) => {
     rejectSubmit: false,
     rejectSubmitAfter: Infinity,
     envError: undefined,
+    logLevel: undefined,
+    logLevelFails: false,
     fork: { isAnswered: false, reason: 'nothing-to-fork' },
     forked: [],
     steps: [],
     sessionId: 'old',
+    sessionIdFails: false,
     clearKeepsSession: false,
     store: new Map(),
     failStore: [],
@@ -151,7 +161,7 @@ export const hostWith = (on: TestOn, host: Partial<Host> = {}) => {
   }
   const storeFails = (op: string, key: string) => h.failStore.includes(`${op}:${key}`) || h.failStore.includes(`${op}:*`)
   // Assumed: /clear gives the session a new id (the `command.run` below does it); the host's own behaviour was not measured.
-  on('session.id', async () => ({ value: h.sessionId }))
+  on('session.id', async () => (h.sessionIdFails ? { deny: 'session is not readable' } : { value: h.sessionId }))
   on('store.get', async (_, e) => (storeFails('get', e.key) ? { deny: 'store is down' } : { value: h.store.get(e.key) }))
   on('store.set', async (_, e) => {
     await once(h, `set ${e.key}`)
@@ -179,8 +189,11 @@ export const hostWith = (on: TestOn, host: Partial<Host> = {}) => {
   })
   // Assumed: every entry is a file; the host's listing also tells directories and links apart, which the mod does not read.
   on('fs.list', async () => ({ value: h.listing.map(l => ({ name: l.name, kind: 'file', size: l.size ?? 1, mtimeMs: l.mtimeMs, isLink: false })) }) as never)
-  // Assumed: `env.get` answers a variable by its name; only HOME and TMPDIR are asked for, and anything but HOME gets the temp directory.
+  // Assumed: `env.get` answers a variable by its name; HOME, TMPDIR and the log level are asked for, and anything else gets the temp
+  // directory. That a read can fail at all is an assumption too: nothing measured names a cause.
   on('env.get', async (_, e) => {
+    if (e.name === 'CONTEXT_RELAY_LOG_LEVEL') await once(h, 'read log level')
+    if (e.name === 'CONTEXT_RELAY_LOG_LEVEL') return h.logLevelFails ? { deny: 'environment is not readable' } : { value: h.logLevel }
     if (h.envError !== undefined) return { deny: h.envError }
     return { value: e.name === 'HOME' ? h.home : h.tmpdir }
   })
@@ -208,6 +221,8 @@ export const DRY_RUN = { options: { dry_run: true } }
 export const NO_GAP = { options: { ...LIVE.options, min_gap_minutes: 0, min_gap_turns: 0 } }
 export const FILE = '/var/T/handoff-1.md'
 export const NOTES = 'goal: finish the parser'
+// What a fork of the history answers with when it gives a handoff.
+export const forkAnswer = (text: string) => ({ isAnswered: true, text, usage: {} })
 
 export type SessionWorld = ReturnType<typeof sessionWith>
 
