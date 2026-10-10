@@ -1,9 +1,9 @@
-# Writes docs/banner-light.svg and docs/banner-dark.svg. With --social, writes social-preview.svg
-# instead (the picture behind docs/social-preview.png; render it to 1280x640 PNG).
+# Writes docs/images/banner-light.svg and docs/images/banner-dark.svg. With --social, writes social-preview.svg
+# instead (the picture behind docs/images/social-preview.png; render it to 1280x640 PNG).
 # Run: python3 docs/src/banner.py [output directory] [--social]
 import os, re, sys
 args = [a for a in sys.argv[1:] if a != '--social']
-OUT = args[0] if args else os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
+OUT = args[0] if args else os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'images')
 SOCIAL = '--social' in sys.argv
 T = {
  'light': dict(bg1='#ffffff', bg2='#eef3fb', dot='#0d1117', dota='0.07', gauge='#eaeef3', stroke='#c3ccd6', title='#1f2328', sub='#31363d', small='#59636e', a1='#0284c7', a2='#7c3aed', warn='#bf8700'),

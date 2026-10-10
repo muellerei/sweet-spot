@@ -10,7 +10,7 @@ export type ConfigResult = { ok: true; config: Config } | { ok: false; errors: s
 export const DEFAULTS: Config = { threshold: 200_000, dryRun: false, minGapMinutes: 10, minGapTurns: 5, handoffCommand: '' }
 
 // The same number is `min` and the text of `threshold` in plugin.json and the README; the tests cannot read those files, so a change here
-// is made in all three. Below this a fresh session already starts near the threshold (median start 88k, p90 110k, plus the handoff): every pause would hand over again.
+// is made in all three. Below this a fresh session already starts near the threshold (the CHANGELOG has the numbers, under Chosen, with the reason): every pause would hand over again.
 const MIN_THRESHOLD = 130_000
 
 // `JSON.stringify` writes NaN and Infinity as null.

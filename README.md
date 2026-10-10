@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/banner-dark.svg">
-    <img src="docs/banner-light.svg" width="900" alt="context-relay: hands a long Claude Code session over to a fresh one">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/banner-dark.svg">
+    <img src="docs/images/banner-light.svg" width="900" alt="context-relay: hands a long Claude Code session over to a fresh one">
   </picture>
 </p>
 
@@ -21,7 +21,7 @@
 
 context-relay hands a long Claude Code session over to a fresh one before the context gets too big, at a moment when that is safe. It is a Claude Code mod (a plugin of function hooks).
 
-![The context bar fills past the threshold, the mod waits for a subagent, hands the session over and continues in a fresh session](docs/relay.svg)
+![The context bar fills past the threshold, the mod waits for a subagent, hands the session over and continues in a fresh session](docs/images/relay.svg)
 
 *Drawn, not recorded: an illustration of the sequence, looping.*
 
@@ -57,7 +57,7 @@ Ideas, questions and a quick "works on my setup" are all welcome: [CONTRIBUTING.
 
 The sweet spot is the range where the context is big enough to hold the work and still small enough to be cheap and reliable.
 
-![The sweet spot on a scale of context size, the threshold, and where a fresh session starts](docs/sweet-spot.svg)
+![The sweet spot on a scale of context size, the threshold, and where a fresh session starts](docs/images/sweet-spot.svg)
 
 - **Cost.** Every call re-reads the whole context. Measured over real sessions, most of the cost came from calls on more than 200k tokens.
 - **Reliability.** "As token count grows, accuracy and recall degrade" ([Anthropic](https://platform.claude.com/docs/en/build-with-claude/context-windows)). An independent test of 18 models found the same ([Chroma](https://www.trychroma.com/research/context-rot)).
@@ -69,7 +69,7 @@ A fresh session starts at 62k to 98k tokens in real handovers. Nobody publishes 
 At the end of an answer it looks at the context size. Past the threshold, and when nothing else is going on, it asks for a handoff, clears the session and submits the text of the handoff file, not its path, as the first message of the new one.
 
 - **Only at a pause.** It acts when an answer is finished, never in the middle of a turn and never from a subagent. A turn that ended with an error, a refusal or Esc is no pause.
-- **It waits for running work.** While a subagent, a background task or a one-shot timer is running, it postpones, because `/clear` would lose that work, and says so once ("handoff postponed, a subagent is running, context 201293 tokens"); it does not repeat the line at every stop. It acts at the first pause after the last one has finished (measured: the answer after the last subagent ended handed over). Past an emergency brake (150k above the threshold, never beyond 90 percent of the window) it goes ahead anyway and says so.
+- **It waits for running work.** While a subagent, a background task or a one-shot timer is running, it postpones, because a handoff written now could not hold that work's result, and the result would come into a fresh session that does not know what it was for. It says so once ("handoff postponed, a subagent is running, context 201293 tokens"); it does not repeat the line at every stop. It acts at the first pause after the last one has finished (measured: the answer after the last subagent ended handed over). Past an emergency brake (150k above the threshold, never beyond 90 percent of the window) it goes ahead anyway and says so.
 - **It writes the handoff, or your command does.** By default a fork of the history writes the handoff with a built-in prompt. With `handoff_command` set, it runs your command as a turn of its own and reads the file that command wrote; if the command is missing, fails, or names no file and none is found in the temp directory, the fork writes the handoff instead, and the change is said with its reason.
 - **Typing is held, not lost.** What you type while a handoff runs is held and goes into the fresh session with the handoff. If submitting the message fails, `/context-relay redeliver` is the way out: it submits it again.
 - **Report only, if you want.** With `dry_run` on it only says "would hand over now" and does nothing.
@@ -77,13 +77,13 @@ At the end of an answer it looks at the context size. Past the threshold, and wh
 
 What happens to what you type while a handoff runs, and what `redeliver` is for:
 
-![What you type during a handover is held and goes into the fresh session; if the submit fails, redeliver puts it in](docs/typing.svg)
+![What you type during a handover is held and goes into the fresh session; if the submit fails, redeliver puts it in](docs/images/typing.svg)
 
 *Drawn, not recorded: an illustration of the sequence, looping.*
 
 And the questions the mod asks at every pause, in this order. The first one that says stop ends the check:
 
-![The five questions at every pause: a normal end of the answer, the threshold, running work, the minimum gap, dry run](docs/decision.svg)
+![The five questions at every pause: a normal end of the answer, the threshold, running work, the minimum gap, dry run](docs/images/decision.svg)
 
 *Drawn, not recorded: an illustration of the sequence, looping.*
 

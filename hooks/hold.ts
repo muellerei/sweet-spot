@@ -1,5 +1,6 @@
 // What a person types while a handoff runs: the typing is held and goes in when the handoff is done, so it is neither lost nor sent into a
-// session that is about to be cleared.
+// session that is about to be cleared. These lines carry the name themselves: the host puts it only in
+// front of log lines and command replies.
 
 import type { State } from './state'
 

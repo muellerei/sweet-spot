@@ -14,7 +14,7 @@ export type State = LevelMemo & {
   // Not kept across a reload, on purpose: a reload is the person changing a setting or the developer reloading the mod, and an unattended
   // session cannot cause one, so the gap still limits every loop that can run without anyone there. A person who reloads after a failed
   // handoff wants the next try at once, which a kept record would hold back for minutes.
-  // `turns` is the user's prompt count of the transcript, which a /clear starts over (measured: the new session counted turns 2 to 8 against a last attempt at turn 19).
+  // `turns` is the user's prompt count of the transcript, which a /clear starts over (docs/host-behaviour.md, `/clear` and the session).
   // `decide` ends the gap by minutes as well as by turns, so a count that fell cannot hold the lock for good.
   lastAttempt: Attempt | undefined
   // The stop of the main loop and the end of its turn, which are judged together.

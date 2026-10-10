@@ -232,6 +232,7 @@ const atPauseOrSay = async ($: Engine, e: Stop, config: Config, state: State) =>
 
 // This is the one place that judges, once the stop and the end of its turn are both in; a stop whose turn ended otherwise is dropped.
 // What it judges is taken by the caller before its read of the log level, together with whether a handoff runs: see `register`.
+// Only a turn that ended in an answer is a pause: Esc, an error or a refusal never starts a handoff.
 const judge = async ($: Engine, config: Config, state: State, paired: ReturnType<typeof judgeable>, handingOver: boolean) => {
   const log = logTo($, state)
   if ('waitingFor' in paired) {

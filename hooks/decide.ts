@@ -16,7 +16,8 @@ export type Snapshot = {
   lastAttempt: Attempt | undefined
 }
 
-// Work that wakes the session again; /clear in the middle of it would lose it.
+// Work that is still running and reports back to the session. A handoff written now cannot hold its result, and the result would come
+// into a fresh session that does not know what it was for.
 export type BusyReason = 'subagent' | 'background-task' | 'one-shot-timer'
 
 export type DeferReason = BusyReason | 'min-gap'

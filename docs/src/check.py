@@ -68,6 +68,20 @@ for path in tracked:
     if VARIABLE in text:
         problems.append(f'{path}: names {VARIABLE}; outside hooks/ only README, CONTRIBUTING and CHANGELOG do')
 
+# The developer docs are read by people who have the repository and nothing else: no path into the
+# author's untracked notes, none of the labels only those notes explain, and English throughout.
+PRIVATE = [(r'(?<![\w/])local/', 'a path into untracked notes'),
+           (r'\b[Ss]pec \d{3}\b|\b\d{3}-[A-Z]\d+\b', 'a spec or task number'),
+           (r'\b[RM]\d{1,2}[a-z]?\b', 'a requirement or measurement label'),
+           (r'[äöüÄÖÜß]', 'German text')]
+for path in tracked:
+    if not re.fullmatch(r'docs/[^/]+\.md', path):
+        continue
+    text = read(path)
+    for pattern, what in PRIVATE:
+        if re.search(pattern, text):
+            problems.append(f'{path}: {what}; the docs are for readers of the repository only')
+
 # The settings are exactly those the mod has defaults for, named in snake_case; so no log level can slip in, as it is an environment variable.
 settings = set(json.loads(read('.claude-plugin', 'plugin.json')).get('userConfig', {}))
 defaults = re.search(r'export const DEFAULTS: Config = \{([^}]*)\}', read('hooks', 'config.ts'))

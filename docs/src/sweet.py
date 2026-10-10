@@ -1,11 +1,11 @@
-# Writes docs/sweet-spot.svg: the scale of context size behind the Why section.
+# Writes docs/images/sweet-spot.svg: the scale of context size behind the Why section.
 # Every position is computed from the numbers below, so the picture cannot disagree
 # with them. The numbers are measured: the default threshold is the setting's default,
 # a fresh session started inside FRESH (common.py) in real handovers (see the README).
 # Run: python3 docs/src/sweet.py [output directory]
 import os, sys
 from common import THRESHOLD, FRESH
-OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
+OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'images')
 AXIS = 400_000                 # right end of the scale
 X0, X1 = 40, 740               # scale on the card, in pixels
 

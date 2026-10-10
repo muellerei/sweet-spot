@@ -14,17 +14,7 @@ Open an [issue](https://github.com/muellerei/context-relay/issues) or start a [d
 
 ## Build and check
 
-You need Claude Code (the version is under Install in the README) and Node. From a clone:
-
-```bash
-claude plugin validate .
-claude plugin test .
-claude --plugin-dir . -p "reply with the word ok"   # lays down the types tsc needs, once
-npx -p typescript@5 tsc -p .
-npx prettier@3 --check hooks
-```
-
-The third line is a short call to the model, so you need to be signed in. Stuck on a step? Tell me. I'd rather fix this page than have you struggle.
+[docs/development.md](docs/development.md) says how to run the mod from a clone and how to run the checks the CI runs, and how the code is laid out is in [docs/architecture.md](docs/architecture.md). Stuck on a step? Tell me. I'd rather fix those pages than have you struggle.
 
 ## Debugging
 
@@ -49,7 +39,7 @@ Leave it out of `~/.claude/settings.json`, or every session everywhere logs. Lin
 
 ## Pictures
 
-The banner and the drawings in `docs/` are made by small Python scripts in `docs/src/`, so a picture can be rebuilt instead of edited by hand: `sh docs/src/build.sh` (Python 3, nothing to install). The drawings say "Drawn, not recorded", in the picture or under it in the README, and the numbers in them are the measured ones from the README, kept as constants in `docs/src/common.py` and at the top of each script. `python3 docs/src/check.py` compares those, the README, `plugin.json` and the pinned Claude Code version in the workflow, and CI runs it, so a number changed in one place and not the others fails. If a change alters what a picture shows, change the script, rebuild, and look at the result in a browser, since the pictures move. Only `docs/social-preview.png` is not built by `build.sh`: it is the output of `python3 docs/src/banner.py <folder> --social`, rendered to 1280 by 640 pixels, for example with headless Chrome (`--screenshot`, `--window-size=1280,640`).
+The banner and the drawings in `docs/images/` are made by small Python scripts in `docs/src/`, so a picture can be rebuilt instead of edited by hand: `sh docs/src/build.sh` (Python 3, nothing to install). The drawings say "Drawn, not recorded", in the picture or under it in the README, and the numbers in them are the measured ones from the README, kept as constants in `docs/src/common.py` and at the top of each script. `python3 docs/src/check.py` compares those, the README, `plugin.json` and the pinned Claude Code version in the workflow, and CI runs it, so a number changed in one place and not the others fails. If a change alters what a picture shows, change the script, rebuild, and look at the result in a browser, since the pictures move. Only `docs/images/social-preview.png` is not built by `build.sh`: it is the output of `python3 docs/src/banner.py <folder> --social`, rendered to 1280 by 640 pixels, for example with headless Chrome (`--screenshot`, `--window-size=1280,640`).
 
 ## What makes a change easy to merge
 

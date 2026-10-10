@@ -1,4 +1,4 @@
-// The host puts "context-relay:" in front of a log line and of what the command returns itself (measured), so none of these lines starts with the name. The hold's own lines keep it: where they show is not measured.
+// The host puts "context-relay:" in front of a log line and of what the command returns itself, so none of these lines starts with the name. The hold's own lines carry it; `hold.ts` says why.
 // What the mod says about a decision. Every line names the context size: a person who sees "postponed" wants to know how close the limit is.
 
 import type { BusyReason, DeferReason, Decision } from './decide'

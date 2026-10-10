@@ -46,7 +46,7 @@ export type Io = {
   forget: (key: string) => Promise<void>
 }
 
-// The skill of the user's command takes about ten seconds; this is for a turn that never ends.
+// The command's turn takes seconds; this is for a turn that never ends, or one held by a permission prompt nobody answers.
 const TURN_TIMEOUT_MS = 5 * 60_000
 
 // The stage says how far the handoff got, and so what is left to put right: up to `read`, and at `fork`, nothing has changed in the
@@ -137,7 +137,7 @@ const deliver = async (io: Io, state: State, text: string, file?: string): Promi
     await dropPending(io, state, key)
     return failed('clear', `/clear failed (${why(err)}), the session is as it was`)
   }
-  // The session the host reports once `/clear` has returned (measured: the fresh one). The same id means `/clear` did nothing, and the
+  // The session the host reports once `/clear` has returned (the fresh one, see docs/host-behaviour.md, `/clear` and the session). The same id means `/clear` did nothing, and the
   // handoff would go into the session it was meant to leave.
   const after = await io.sessionId().catch(() => {
     io.log('debug', 'session id unknown after the clear')

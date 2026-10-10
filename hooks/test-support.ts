@@ -76,7 +76,8 @@ export const endTurn = ($: TestEngine, reason: TurnEnd = 'answer', { agentId, an
     ...(agentId === undefined ? {} : { agentId }),
   } as never)
 
-// The end of an answer and the stop that follows it, in the order the tests assume: `turn.complete` first. `order.test.tsx` has the other order.
+// The end of an answer and the stop that follows it, in the order most tests assume: `turn.complete` first. The host sends the stop
+// first; the tests about the order send it that way themselves.
 export const pause = async ($: TestEngine, input: StopInput = {}) => {
   await endTurn($, 'answer')
   await stop($, input)
@@ -160,7 +161,7 @@ export const hostWith = (on: TestOn, host: Partial<Host> = {}) => {
     ...host,
   }
   const storeFails = (op: string, key: string) => h.failStore.includes(`${op}:${key}`) || h.failStore.includes(`${op}:*`)
-  // Assumed: /clear gives the session a new id (the `command.run` below does it); the host's own behaviour was not measured.
+  // /clear gives the session a new id (the `command.run` below does it), as the host does.
   on('session.id', async () => (h.sessionIdFails ? { deny: 'session is not readable' } : { value: h.sessionId }))
   on('store.get', async (_, e) => (storeFails('get', e.key) ? { deny: 'store is down' } : { value: h.store.get(e.key) }))
   on('store.set', async (_, e) => {

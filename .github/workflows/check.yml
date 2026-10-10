@@ -30,7 +30,15 @@ jobs:
       - run: claude --version
       - run: claude plugin validate . --strict
       - run: claude plugin test .
-      - run: npx prettier@3 --check hooks
+      - name: Types
+        env:
+          # Claude Code lays down .claude-plugin/types/ only while it watches plugin folders, which a headless run does not do
+          # unless told to. No sign-in is needed: the call fails with "Not logged in" after the types are written.
+          CLAUDE_CODE_PLUGIN_DIR_WATCH: '1'
+        run: |
+          claude --plugin-dir . -p ok || true
+          npx -p typescript@5 tsc -p .
+      - run: npx prettier@3 --check hooks docs
       - run: python3 docs/src/check.py
       - name: Pictures match their scripts
         run: sh docs/src/build.sh && git diff --exit-code -- docs

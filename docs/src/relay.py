@@ -1,11 +1,11 @@
-# Writes docs/relay.svg: the handover as a looping drawing. The numbers come from the
+# Writes docs/images/relay.svg: the handover as a looping drawing. The numbers come from the
 # constants below, so the end of the loop cannot drift away from what the README states:
 # a fresh session started inside FRESH (common.py) in real handovers, so the loop ends inside it.
 # The counting between START and PEAK is an illustration, not a measurement.
 # Run: python3 docs/src/relay.py [output directory]
 import os, sys
 from common import THRESHOLD, FRESH
-OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
+OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'images')
 START = 30_000           # where the loop begins
 PEAK = 201_000           # the last value counted before the handover
 END = 80_000             # where the fresh session stands; must lie inside FRESH

@@ -1,5 +1,5 @@
 // A pause is the end of an answer, and two events say it between them: `classic.Stop` says the answer is over, `turn.complete` says how the
-// turn ended. The host raises them in either order (measured: the stop first, a few milliseconds before). This is the one place that knows
+// turn ended. The host sends the stop first (docs/host-behaviour.md, Events and their order), and either order is taken. This is the one place that knows
 // the pairing, so that the hooks only record what they saw and the judge asks once.
 
 // What `classic.Stop` brings that the mod reads.

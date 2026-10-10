@@ -85,15 +85,15 @@ export type ForkAnswer = { isAnswered: true; text: string } | { isAnswered: fals
 type NoFork = Extract<ForkAnswer, { isAnswered: false }>
 
 // The reasons a fork gives nothing for that the mod knows, each in words for a person. The one list both the words and the log's kind read.
-const FORK_REASONS: Record<string, (answer: NoFork) => string> = {
+const FORK_REASONS = {
   'nothing-to-fork': () => 'there is nothing to fork yet (a fresh or just cleared session)',
   'api-error': answer => `the API failed${typeof answer.status === 'number' ? ` (status ${answer.status})` : ''}`,
   'empty-reply': () => 'the fork replied with nothing',
   aborted: () => 'the fork was aborted',
   timeout: () => `the fork did not answer within ${FORK_TIMEOUT_MS / 60_000} minutes`,
-}
+} satisfies Record<string, (answer: NoFork) => string>
 
-const known = (reason: string): boolean => Object.hasOwn(FORK_REASONS, reason)
+const known = (reason: string): reason is keyof typeof FORK_REASONS => Object.hasOwn(FORK_REASONS, reason)
 
 // The kind of reason a fork gave nothing for, from a fixed set: a reason the mod does not know is the host's own words and stays out.
 export const forkKind = (answer: NoFork): string => (known(answer.reason) ? answer.reason : 'other')

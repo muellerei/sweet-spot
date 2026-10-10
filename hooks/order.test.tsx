@@ -2,7 +2,7 @@ import { test, expect } from 'claude-code/testing'
 
 import { endTurn, sessionWith, startSession, startTurn, stop, withMod, DRY_RUN } from './test-support'
 
-// Measured: the host raises the stop 4 to 5 ms before the `turn.complete` of the same turn. The mod still has to give the same
+// The host raises the stop first, before the `turn.complete` of the same turn (docs/host-behaviour.md, Events and their order). The mod still has to give the same
 // answer either way, because only an answer may start a handoff and the stop does not say how the turn ended.
 const WOULD = /would hand over/
 

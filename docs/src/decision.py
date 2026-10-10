@@ -1,7 +1,7 @@
-# Writes docs/decision.svg. Run: python3 docs/src/decision.py [output directory]
+# Writes docs/images/decision.svg. Run: python3 docs/src/decision.py [output directory]
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
+OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'images')
 from common import *
 W, H, DUR = 780, 330, 18
 GX = [90, 222, 354, 486, 618]       # gate centres
