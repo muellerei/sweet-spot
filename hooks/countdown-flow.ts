@@ -104,8 +104,8 @@ export const begin = async (io: CountdownIo, state: State, seconds: number, star
   return true
 }
 
-// Why a countdown ended without a handover: typing (`edit`), a submit, a turn, the command `later`, the end of the session, a compact the
-// mod did not start, text in the prompt when it ran out (`prompt`), or a clock that ran out long past the deadline (`late`).
+// Why a countdown ended without a handover: typing (`edit`), a submit, a turn, the command `later` or `asap`, the end of the session, a
+// compact the mod did not start, text in the prompt when it ran out (`prompt`), or a clock that ran out long past the deadline (`late`).
 export type EndReason = 'edit' | 'submit' | 'turn' | 'command' | 'session' | 'compact' | 'prompt' | 'late'
 
 // The diagnostic line for it, which a handler writes after its read of the log level.
@@ -173,7 +173,7 @@ const tick = async (io: CountdownIo, state: State, countdown: Countdown) => {
 }
 
 // The end is not one step: it waits on the prompt, the session and the clock, and anything that ends the countdown meanwhile (typing, a
-// submit, a turn, `later`) ends it synchronously, before its own first wait. So the check that this countdown still runs comes after the
+// submit, a turn, `later`, `asap`) ends it synchronously, before its own first wait. So the check that this countdown still runs comes after the
 // last wait, and the handover is set going in the same step (`carry` sets `handingOver`); a countdown gone by then is left alone.
 //
 // A survey that came up meanwhile holds the countdown here as well: it is left as it is, and its deadline, by then reached, runs out again

@@ -29,7 +29,7 @@ now") below that. `begin` in `countdown-flow.ts` reads where the session draws (
 `button`, the prompt: a draft holds the countdown back to the next pause. Each pause that holds back or begins a countdown counts as
 deferred (`deferred` in `state.ts`) until a handover begins, a later handover is asked for or the context shrinks. The countdown lives
 in the state (`countdown`), with a deadline that is a time, not a count of ticks; the band only draws it. A person ends it with no
-handover: typing (`typed` tells the echo of the digit before its press from typing), a submit, a turn, `later`, the end of the session or
+handover: typing (`typed` tells the echo of the digit before its press from typing), a submit, a turn, `later` or `asap`, the end of the session or
 a compact the mod did not start, each synchronously before its handler waits (`end`). "Not now" goes through `press`, which moves the handover
 back the way the command does. When it runs out, `runOut` reads the prompt, the session and then the clock, checks after the last wait that
 the countdown still runs, judges afresh with `decide`, and only then carries out the handover at the pause's own `carry`; text in the
@@ -62,7 +62,9 @@ the store, and `/sweet-spot redeliver` submits it, into the session the `/clear`
   host-behaviour, Inside the mod); if it is wrong, the indirection can go.
 - **State lives in the module.** It survives `/clear`, so the minimum gap and `redeliver` work across a handoff, and it ends with a
   reload, on purpose (the comment on `State` in `state.ts` says why). A handover moved back by `later` lives there too: it holds until
-  the next handover or until the context shrinks below where it was asked.
+  the next handover or until the context shrinks below where it was asked. So does the mark of `asap` (`asap` in `state.ts`): it ends
+  with the handover that begins, the end of the session, a compact, a context that has shrunk below where it was asked, and `later`
+  (`endAsap` and `shrunk`).
 - **One place logs.** `log.ts` decides what a level shows; only `register.tsx` touches `$.ui.log` and the environment. CONTRIBUTING,
   Debugging, covers how to turn the log on.
 
@@ -98,7 +100,10 @@ Each is explained in a comment at the place named.
 - The value a pause judges at, the answers of `later` and `status` and the pause line all come from `thresholdInForce` in `decide.ts`: capped at the
   brake of the window as it is at that pause, never below the threshold in force.
 - The command is `immediate`, so `later` typed during an answer comes before the pause that ends it is judged (host-behaviour,
-  Commands); a handover that starts while it reads the context turns it down (`laterText` in `register.tsx`).
+  Commands); a handover that starts while it reads the context turns it down (`contextFor` in `register.tsx`, which `later` and `asap` both go through).
+- A handover that is already under way is not started a second time: `beginHandover` stops before it spends a mark. A countdown still
+  being set up and `asap` at rest can both reach it.
+- The last command counts: `later` takes the mark of `asap` back, and `asap` drops a later handover (`laterText`, `asapText` in `register.tsx`).
 
 ## The threshold
 

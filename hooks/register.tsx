@@ -630,8 +630,9 @@ export const register: Register = (on, options) => {
 
   // The redelivery's timer runs outside any handler; its lines come after its own waits, by when the read here is in.
   on('command.run', { command: COMMAND }, async ($, e) => {
-    // `later` ends a countdown before it moves the handover back. Typed, its first character has already ended it; a command raises no
-    // submit, and from the history it is expected to come with no edit either (docs/host-behaviour.md, Commands). `redeliver` leaves it running.
+    // `later` and `asap` end a countdown before they move the handover back or ask for one. Typed, its first character has already ended
+    // it; a command raises no submit, and from the history it is expected to come with no edit either (docs/host-behaviour.md, Commands).
+    // `redeliver` leaves it running.
     const verb = verbOf(e.args)
     const ended = (verb === 'later' || verb === 'asap') && end(countdownIo($, state), state)
     const { text, lines = [] } = await commandText($, settings, e.args, state)

@@ -63,8 +63,8 @@ Contents: [Events and their order](#events-and-their-order) · [`/clear` and the
 ## Reload
 
 - **A change in `/config` reloads the mod.** The debug log says the options changed and the mod was reloaded, and the mod's state is
-  gone. _Measured 2026-10-08, version not recorded; a setting changed during a live session, the debug log read after._ Anything a mod keeps in memory (here: the minimum gap and what `redeliver` can find)
-  ends with a setting change.
+  gone. _Measured 2026-10-08, version not recorded; a setting changed during a live session, the debug log read after._ Anything a mod keeps in memory (here: the minimum gap, what `redeliver` can find, a handover moved back by `later` or asked for with `asap`, and a running
+  countdown) ends with a setting change.
 - **A reload during a handoff ends it without a word.** _Seen 2026-10-08 in the logs of a live session, version not recorded; what
   caused that reload is open._ A handoff cut off this way leaves the session as it was; the next pause past the threshold tries again,
   since the reload also cleared the minimum gap.
