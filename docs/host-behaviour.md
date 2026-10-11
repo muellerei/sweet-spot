@@ -1,7 +1,9 @@
 # How the host behaves
 
-What sweet-spot relies on about Claude Code that its documentation does not say, or says only in the types. Each entry says how sure
-it is:
+What sweet-spot relies on about Claude Code that its documentation does not say, or says only in the types. Verified against Claude Code
+2.1.294 to 2.1.296.
+
+Each entry says how sure it is:
 
 - **measured**: seen in a real session, with the date, the Claude Code version where it was recorded, and how it was seen
 - **derived**: follows from something measured, not seen itself; it names what
@@ -9,14 +11,12 @@ it is:
 - **open**: not known
 
 Each entry ends with what it means for a mod. The code says why it is built the way it is; this page says what the host does that the
-why rests on. Verified against Claude Code 2.1.294 to 2.1.296. When the version the mod is developed against goes up (the first entry
-of the CI matrix), the measurements the core rests on are taken again: the order of stop and turn end, `/clear` and the session,
-`command.run`, `$.session.compact` (with Esc, whose refusal reads "Compaction canceled."), and the words the host uses for a declined
-permission (the start of the tool result that `USER_REJECTED` in `handoff.ts` looks for). For the countdown: a digit in an empty prompt
-comes as `prompt.edit` before its `ui.press` (measured, under Commands); the history, Tab on a suggestion and `$.prompt.fill` fill the
-prompt with no `prompt.edit` (measured, under Commands); a value written in the `ui.render` hook when a survey comes up or goes (the
-write is measured, the change to "survey present" is not); and that a compact raises no `session.end` (derived, not measured: see
-Open).
+why rests on.
+
+Contents: [Events and their order](#events-and-their-order) · [`/clear` and the session](#clear-and-the-session) · [Loading](#loading) ·
+[Reload](#reload) · [Commands](#commands) · [`$.model.fork`](#modelfork) · [`$.session.compact`](#sessioncompact) ·
+[Output](#output) · [Environment](#environment) · [Running more than one](#running-more-than-one) · [Inside the mod](#inside-the-mod) ·
+[Testing inside the host](#testing-inside-the-host) · [Measuring again](#measuring-again) · [Open](#open)
 
 ## Events and their order
 
@@ -78,6 +78,8 @@ Open).
 
 ## Commands
 
+### Running a command
+
 - **`$.command.run` settles at once.** It returned `{}` after 18 ms; the turn the command starts ended about 9 seconds later. _Measured
   2026-10-08, Claude Code 2.1.294; throwaway mod, headless `claude -p`._ A mod cannot await a command's result; it has to wait for the
   end of the turn the command starts.
@@ -87,6 +89,9 @@ Open).
   from a later event". _Measured 2026-10-08, Claude Code 2.1.294; throwaway mod, the error the host returned._ Start the command from a later event.
 - **A stop is a hook the turn waits on.** _Derived from the refusal above for a command; measured for `$.session.compact` below._
   sweet-spot starts a handover only after the stop has returned.
+
+### Permission prompts
+
 - **A permission prompt in the command's turn holds it.** Without allow rules for what the command runs, the turn stops at a prompt
   until someone answers. _Measured 2026-10-09, version not recorded; live session started with project settings only, the handoff command of the project._
   sweet-spot gives up on the command's turn after 5 minutes and
@@ -100,6 +105,9 @@ Open).
   `classic.PermissionRequest`, and the model answers on. sweet-spot reads the decline from that text (`USER_REJECTED` in `handoff.ts`)
   in a `tool.call` hook while the command's turn runs, and cancels when no file was written because of it; a rule's denial falls back.
   If the host changes the words, the decline goes unseen and Esc falls back as it did before.
+
+### Commands typed during an answer
+
 - **A command typed while an answer runs waits for the stop and the end of the turn.** Its `command.run` came 39 ms after
   `turn.complete`, which came after `classic.Stop`. _Measured 2026-10-10, Claude Code 2.1.296; throwaway mod that logged the three
   events with their time, a slash command typed during a long answer._ A pause is judged before such a command runs, so a command that
@@ -109,6 +117,9 @@ Open).
   _Measured 2026-10-10, Claude Code 2.1.296; the same mod with `immediate: true`._
 - **Ctrl+Enter on a waiting command ends the answer.** The prompt offers "ctrl+enter to send now"; it ended the turn as `aborted`, with
   no `classic.Stop`, and ran the command 42 ms later. _Measured 2026-10-10, Claude Code 2.1.296; the same mod without `immediate`._
+
+### Digits and the prompt
+
 - **A digit in an empty prompt raises `prompt.edit` first and `ui.press` about 0.4 s later.** With a band `Button` on `hotkey="1"`, the
   edit read `text: ""`, `key: { key: "1" }`, `inputText: "1"`; the press came 405 and 407 ms after it in two runs, and the prompt stayed empty
   (`$.prompt.read()` 700 ms after the edit gave `""`). With text in the prompt the digit is typed, no press follows. At the edit the two
@@ -132,6 +143,9 @@ Open).
   `turn.start` with a `text` that begins `<task-notification>`, and a turn that ended in `answer`; no `prompt.edit`. A slash command that
   runs a skill raises `prompt.submit` with the command line and `turn.start` with `<command-message>…` as its text. _Measured 2026-10-11,
   Claude Code 2.1.296; the same mod, a task of `sleep 8` in the background._
+
+### `immediate` commands at rest
+
 - **An `immediate` command at rest starts a compact, a `/clear` or a user command only from a later event.** Called inside the
   `command.run` hook, `$.session.compact()` and `$.command.run` (for `clear` and for a skill) are refused by the host: "called from a
   command.run hook, it would … the turn this hook is holding … run it from a later event". With the same call made 300 ms later from
@@ -141,6 +155,9 @@ Open).
 - **An `immediate` slash command raises `prompt.edit` and `command.run`, but not `prompt.submit`.** Sent from the history (arrow up) it
   is not measured; no `prompt.edit` is expected there, since history does not raise one. A mod that needs to notice such a command
   listens to `command.run`. _Measured 2026-10-11, Claude Code 2.1.296; the same mod, typed commands only._
+
+### The band and a survey
+
 - **A module value set in the `ui.render` hook works, the change to "survey present" was not triggered.** The first render reported
   `hasSurvey` as `undefined`, then `false`, the band showed the value, and no render loop followed. A survey never appeared in the
   runs (they show up at random, not after three compacts either), so the switch to "present" is unmeasured. _Measured 2026-10-11,
@@ -242,6 +259,24 @@ throwaway mod for the veto. Interactive runs through tmux, from the veto on thro
 - **A delayed call from the first turn does not fire headless.** `$.clock.after(0, …)` did not run, because the process ends with the
   turn. _Measured 2026-10-08, Claude Code 2.1.294; throwaway
   mod, headless `claude -p`._ In a headless test, await the call inside the hook.
+
+## Measuring again
+
+When the version the mod is developed against goes up (the first entry of the CI matrix), these measurements are taken again, because
+the core rests on them:
+
+- the order of the stop and the end of the turn
+- `/clear` and the session
+- `command.run`
+- `$.session.compact`, with Esc, whose refusal reads "Compaction canceled."
+- the words the host uses for a declined permission (the start of the tool result that `USER_REJECTED` in `handoff.ts` looks for)
+
+For the countdown:
+
+- a digit in an empty prompt comes as `prompt.edit` before its `ui.press` (measured, under Commands)
+- the history, Tab on a suggestion and `$.prompt.fill` fill the prompt with no `prompt.edit` (measured, under Commands)
+- a value written in the `ui.render` hook when a survey comes up or goes (the write is measured, the change to "survey present" is not)
+- a compact raises no `session.end` (derived, not measured: see Open)
 
 ## Open
 
