@@ -1,4 +1,4 @@
-import { test, expect } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
 
 import { ASK_FOR_PATH, firstMessage } from './handoff'
 import {
@@ -20,6 +20,7 @@ import {
   type SessionWorld,
   type TestEngine,
   ANSWERED,
+  modTest,
 } from './test-support'
 
 // The user presses Esc or "No" at a permission prompt in the turn of their own handoff command, and the command writes no file because of it:
@@ -40,7 +41,7 @@ const commandTurn = async ($: TestEngine, world: SessionWorld, calls: () => Prom
   await world.clock.settle()
 }
 
-test('Esc at the prompt, with no file written, cancels: the fallback does not hand over', LIVE, async ($, on) => {
+modTest('Esc at the prompt, with no file written, cancels: the fallback does not hand over', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { modelFork: ANSWERED, toolResults: [REJECTED_BY_USER] })
@@ -52,7 +53,7 @@ test('Esc at the prompt, with no file written, cancels: the fallback does not ha
   expect(host.store.get('failure')).toMatchObject({ stage: 'cancelled', reason: 'you declined a permission the command asked for' })
 })
 
-test('"No" with a hint, and a file written after all, hands over as usual', LIVE, async ($, on) => {
+modTest('"No" with a hint, and a file written after all, hands over as usual', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES }, toolResults: [REJECTED_WITH_HINT] })
@@ -62,7 +63,7 @@ test('"No" with a hint, and a file written after all, hands over as usual', LIVE
   expect(seen.logs).toEqual([DUE, HANDED])
 })
 
-test('a rule that denied the call is no stop of the user: the fallback takes over', LIVE, async ($, on) => {
+modTest('a rule that denied the call is no stop of the user: the fallback takes over', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { modelFork: ANSWERED, toolResults: [DENIED_BY_RULE] })
@@ -72,7 +73,7 @@ test('a rule that denied the call is no stop of the user: the fallback takes ove
   expect(seen.logs).toEqual([DUE, fellBack(NO_PATH), HANDED])
 })
 
-test("the user and a rule declining in the same turn: the user's decline counts", LIVE, async ($, on) => {
+modTest("the user and a rule declining in the same turn: the user's decline counts", LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { modelFork: ANSWERED, toolResults: [DENIED_BY_RULE, REJECTED_BY_USER] })
@@ -85,7 +86,7 @@ test("the user and a rule declining in the same turn: the user's decline counts"
   expect(seen.logs).toEqual([DUE, CANCELLED])
 })
 
-test('a subagent that was declined does not count', LIVE, async ($, on) => {
+modTest('a subagent that was declined does not count', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { modelFork: ANSWERED, toolResults: [REJECTED_BY_USER] })
@@ -95,7 +96,7 @@ test('a subagent that was declined does not count', LIVE, async ($, on) => {
   expect(seen.logs).toEqual([DUE, fellBack(NO_PATH), HANDED])
 })
 
-test("a decline before the command's turn started is not that turn's", LIVE, async ($, on) => {
+modTest("a decline before the command's turn started is not that turn's", LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { modelFork: ANSWERED, toolResults: [REJECTED_BY_USER] })
@@ -106,7 +107,7 @@ test("a decline before the command's turn started is not that turn's", LIVE, asy
   expect(seen.logs).toEqual([DUE, fellBack(NO_PATH), HANDED])
 })
 
-test('a decline after the wait is over is not looked at', LIVE, async ($, on) => {
+modTest('a decline after the wait is over is not looked at', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { modelFork: ANSWERED, toolResults: [REJECTED_BY_USER] })
@@ -117,7 +118,7 @@ test('a decline after the wait is over is not looked at', LIVE, async ($, on) =>
   expect(host.modelForkPrompts).toHaveLength(1)
 })
 
-test('the call is passed on as it is, whatever it answered', LIVE, async ($, on) => {
+modTest('the call is passed on as it is, whatever it answered', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   hostWith(on, { toolResults: [REJECTED_BY_USER, { result: 'fine', text: 'fine' }] })
@@ -127,7 +128,7 @@ test('the call is passed on as it is, whatever it answered', LIVE, async ($, on)
   expect(await bash($)).toEqual({ result: 'fine', text: 'fine' })
 })
 
-test('the decline is logged at debug, without the tool or what it was asked to do', LIVE, async ($, on) => {
+modTest('the decline is logged at debug, without the tool or what it was asked to do', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { logLevel: 'debug', toolResults: [REJECTED_BY_USER] })

@@ -1,4 +1,4 @@
-import { test, expect } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
 
 import { ASK_FOR_PATH, firstMessage } from './handoff'
 import {
@@ -24,6 +24,7 @@ import {
   INTERNAL_HANDOFF_ALSO_FAILED,
   PENDING,
   submits,
+  modTest,
 } from './test-support'
 
 // What the person types while a handoff runs, and what is left to put right when the handoff does not get through: the typing is held
@@ -36,7 +37,7 @@ const HEAD = 'Typed while the handoff ran:'
 const FIRST = firstMessage(NOTES)
 const withHeld = (...items: string[]) => `${FIRST}\n\n${HEAD}\n${items.join('\n\n')}`
 
-test('typing while the handoff runs is held, and goes into the first message of the fresh session, once', LIVE, async ($, on) => {
+modTest('typing while the handoff runs is held, and goes into the first message of the fresh session, once', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES } })
@@ -47,7 +48,7 @@ test('typing while the handoff runs is held, and goes into the first message of 
   expect(host.steps).toEqual([RUN, 'run clear', `submit ${withHeld('also fix the lexer')}`])
 })
 
-test('several inputs are held in the order typed, and one typed twice is held twice', LIVE, async ($, on) => {
+modTest('several inputs are held in the order typed, and one typed twice is held twice', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES } })
@@ -59,7 +60,7 @@ test('several inputs are held in the order typed, and one typed twice is held tw
   expect(submits(host)).toEqual([`submit ${withHeld('first', 'second', 'first')}`])
 })
 
-test('typing is not held when no handoff is running, nor once it is over', LIVE, async ($, on) => {
+modTest('typing is not held when no handoff is running, nor once it is over', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES } })
@@ -80,7 +81,7 @@ const passing: [string, string, object][] = [
   ['a message from a plugin', 'from a plugin', { origin: { kind: 'plugin', name: 'other' } }],
 ]
 for (const [name, text, extra] of passing) {
-  test(`${name} is not held while a handoff runs`, LIVE, async ($, on) => {
+  modTest(`${name} is not held while a handoff runs`, LIVE, async ($, on) => {
     withMod(on)
     const world = sessionWith(on)
     const host = hostWith(on, { files: { [FILE]: NOTES } })
@@ -92,7 +93,7 @@ for (const [name, text, extra] of passing) {
   })
 }
 
-test('an input with attachments is turned away whole, as attachments cannot be held', LIVE, async ($, on) => {
+modTest('an input with attachments is turned away whole, as attachments cannot be held', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES } })
@@ -103,7 +104,7 @@ test('an input with attachments is turned away whole, as attachments cannot be h
   expect(submits(host)).toEqual([`submit ${FIRST}`])
 })
 
-test('typing that comes after the first message is built goes in after it, once, as a message of its own', LIVE, async ($, on) => {
+modTest('typing that comes after the first message is built goes in after it, once, as a message of its own', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES } })
@@ -113,7 +114,7 @@ test('typing that comes after the first message is built goes in after it, once,
   expect(host.steps).toEqual([RUN, 'run clear', `submit ${FIRST}`, 'submit late one'])
 })
 
-test('typing that comes while the late typing is being submitted goes in as well', LIVE, async ($, on) => {
+modTest('typing that comes while the late typing is being submitted goes in as well', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES } })
@@ -127,7 +128,7 @@ test('typing that comes while the late typing is being submitted goes in as well
   expect(await typeInto($, 'now')).toEqual({ text: 'now' })
 })
 
-test('typing that comes once everything held is settled is not held, even while the outcome is still being written down', LIVE, async ($, on) => {
+modTest('typing that comes once everything held is settled is not held, even while the outcome is still being written down', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { commands: [] })
@@ -138,7 +139,7 @@ test('typing that comes once everything held is settled is not held, even while 
   expect(submits(host)).toEqual(['submit right after'])
 })
 
-test('typing held in one handoff is not carried into the next', NO_GAP, async ($, on) => {
+modTest('typing held in one handoff is not carried into the next', NO_GAP, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES } })
@@ -187,7 +188,7 @@ const before: [string, (host: Host) => void, (world: SessionWorld, $: TestEngine
   ],
 ]
 for (const [name, arrange, act] of before) {
-  test(`when ${name}, the typing goes back into the session once, and nothing is left pending`, NO_GAP, async ($, on) => {
+  modTest(`when ${name}, the typing goes back into the session once, and nothing is left pending`, NO_GAP, async ($, on) => {
     withMod(on)
     const world = sessionWith(on)
     const host = hostWith(on, { commands: ['handoff'] })
@@ -204,7 +205,7 @@ for (const [name, arrange, act] of before) {
 }
 
 // The typing cannot go back either: it is kept for redelivery, and the failure says so beside its own reason.
-test('typing that cannot go back into the session is kept for redelivery, and the failure says so', LIVE, async ($, on) => {
+modTest('typing that cannot go back into the session is kept for redelivery, and the failure says so', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { commands: [], rejectSubmit: true })
@@ -223,7 +224,7 @@ for (const [name, arrange] of [
   ['a hook drops it', (host: Host) => (host.dropSubmit = 'held by another hook')],
   ['the submit throws', (host: Host) => (host.rejectSubmit = true)],
 ] as const) {
-  test(`when ${name}, the first message stays pending with all the typing in it, and the typing after it is added`, LIVE, async ($, on) => {
+  modTest(`when ${name}, the first message stays pending with all the typing in it, and the typing after it is added`, LIVE, async ($, on) => {
     withMod(on)
     const world = sessionWith(on)
     const host = hostWith(on, { files: { [FILE]: NOTES } })
@@ -240,7 +241,7 @@ for (const [name, arrange] of [
   })
 }
 
-test('late typing that cannot be submitted after a handoff is kept for redelivery, and the failure says so', LIVE, async ($, on) => {
+modTest('late typing that cannot be submitted after a handoff is kept for redelivery, and the failure says so', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES }, rejectSubmitAfter: 1 })
@@ -254,7 +255,7 @@ test('late typing that cannot be submitted after a handoff is kept for redeliver
   )
 })
 
-test('typing that can be neither put back nor kept is named in the failure, so it is not lost unseen', LIVE, async ($, on) => {
+modTest('typing that can be neither put back nor kept is named in the failure, so it is not lost unseen', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { commands: [], rejectSubmit: true, failStore: ['set:*'] })

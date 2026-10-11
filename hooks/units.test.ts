@@ -1,7 +1,7 @@
 import { test, expect } from 'claude-code/testing'
 
 import { DEFAULTS, configOf } from './config'
-import { activeTasks, decide, effectiveThreshold, laterAt, oneShots, thresholdInForce, type Decision, type Snapshot } from './decide'
+import { activeTasks, decide, effectiveThreshold, laterAt, oneShots, shrunk, thresholdInForce, type Decision, type Snapshot } from './decide'
 import { DEFAULT_PROMPT, ASK_FOR_PATH, firstMessage, modelForkFailure, modelForkKind, handoffPath, newestHandoff, promptFrom, promptPath } from './handoff'
 import { endSeen, freshPairing, judgeable, stopSeen, turnStarted } from './pairing'
 import { reportOf } from './report'
@@ -19,6 +19,7 @@ test('configOf: nothing set gives the defaults, and the defaults are these', asy
     minGapMinutes: 10,
     minGapTurns: 5,
     laterTokens: 25_000,
+    countdownSeconds: 0,
     handoffMethod: 'internal-handoff',
     handoffFallback: 'builtin-compact',
     handoffCommand: '',
@@ -37,6 +38,7 @@ test('configOf: valid values are taken as they are', async () => {
       minGapMinutes: 0,
       minGapTurns: 0,
       laterTokens: 1,
+      countdownSeconds: 0,
       handoffMethod: 'internal-handoff',
       handoffFallback: 'builtin-compact',
       handoffCommand: 'claude-mem:handoff',
@@ -82,6 +84,16 @@ test('configOf: later_tokens is a whole number of tokens, 1 or more', async () =
   expect(rejected({ later_tokens: 2.5 })).toEqual(['later_tokens: 2.5 is not a whole number'])
   expect(rejected({ later_tokens: Number.POSITIVE_INFINITY })).toEqual(['later_tokens: Infinity is not a finite number'])
   expect(configOf({ later_tokens: 50_000 })).toMatchObject({ ok: true, config: { laterTokens: 50_000 } })
+})
+
+test('configOf: countdown_seconds is a whole number of seconds from 0 to 60', async () => {
+  expect(rejected({ countdown_seconds: '10' })).toEqual(['countdown_seconds: "10" is not a number'])
+  expect(rejected({ countdown_seconds: -1 })).toEqual(['countdown_seconds: -1 is below 0'])
+  expect(rejected({ countdown_seconds: 61 })).toEqual(['countdown_seconds: 61 is above 60'])
+  expect(rejected({ countdown_seconds: 2.5 })).toEqual(['countdown_seconds: 2.5 is not a whole number'])
+  expect(rejected({ countdown_seconds: Number.POSITIVE_INFINITY })).toEqual(['countdown_seconds: Infinity is not a finite number'])
+  for (const seconds of [0, 1, 60])
+    expect([seconds, configOf({ countdown_seconds: seconds })]).toMatchObject([seconds, { ok: true, config: { countdownSeconds: seconds } }])
 })
 
 test('configOf: the handoff command is the name as the command list shows it, without a slash or a space', async () => {
@@ -291,6 +303,14 @@ test('laterAt: a context below where later was asked ends it; no reading of the 
   expect(laterAt(later, 240_000)).toEqual(later)
   expect(laterAt(later, undefined)).toEqual(later)
   expect(laterAt(undefined, 100_000)).toBeUndefined()
+})
+
+test('shrunk: any mark that remembers where it was set ends below that context, and keeps every field of its own otherwise', async () => {
+  const mark = { from: 190_000, pauses: 2 }
+  expect(shrunk(mark, 189_999)).toBeUndefined()
+  expect(shrunk(mark, 190_000)).toBe(mark)
+  expect(shrunk(mark, undefined)).toBe(mark)
+  expect(shrunk(undefined, 100_000)).toBeUndefined()
 })
 
 const MINUTE = 60_000

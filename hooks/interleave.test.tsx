@@ -1,7 +1,22 @@
-import { test, expect } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
 
 import { ASK_FOR_PATH, firstMessage } from './handoff'
-import { endTurn, FILE, hostWith, LIVE, NOTES, reachThreshold, sessionWith, startSession, startTurn, stop, typeInto, withMod, DRY_RUN } from './test-support'
+import {
+  endTurn,
+  FILE,
+  hostWith,
+  LIVE,
+  NOTES,
+  reachThreshold,
+  sessionWith,
+  startSession,
+  startTurn,
+  stop,
+  typeInto,
+  withMod,
+  DRY_RUN,
+  modTest,
+} from './test-support'
 
 // Every handler reads the log level, which is a wait. These tests start two handlers before either is done,
 // the way two events of the host can overlap, and expect the outcome of the same two events one after the other.
@@ -13,7 +28,7 @@ const HELD = 'sweet-spot: a handover is in progress, your message is held and go
 for (const level of [undefined, 'trace']) {
   const named = level === undefined ? 'with no log' : `with the log at ${level}`
 
-  test(`a stop and the end of its answer at once report once, stop first, ${named}`, DRY_RUN, async ($, on) => {
+  modTest(`a stop and the end of its answer at once report once, stop first, ${named}`, DRY_RUN, async ($, on) => {
     const seen = withMod(on)
     sessionWith(on)
     hostWith(on, { logLevel: level })
@@ -23,7 +38,7 @@ for (const level of [undefined, 'trace']) {
     expect(seen.logs.filter(l => WOULD.test(l))).toHaveLength(1)
   })
 
-  test(`a stop and the end of its answer at once report once, end first, ${named}`, DRY_RUN, async ($, on) => {
+  modTest(`a stop and the end of its answer at once report once, end first, ${named}`, DRY_RUN, async ($, on) => {
     const seen = withMod(on)
     sessionWith(on)
     hostWith(on, { logLevel: level })
@@ -33,7 +48,7 @@ for (const level of [undefined, 'trace']) {
     expect(seen.logs.filter(l => WOULD.test(l))).toHaveLength(1)
   })
 
-  test(`the end of a turn and the start of the next at once still judge the turn that ended, ${named}`, DRY_RUN, async ($, on) => {
+  modTest(`the end of a turn and the start of the next at once still judge the turn that ended, ${named}`, DRY_RUN, async ($, on) => {
     const seen = withMod(on)
     sessionWith(on)
     hostWith(on, { logLevel: level })
@@ -44,7 +59,7 @@ for (const level of [undefined, 'trace']) {
     expect(seen.logs.filter(l => WOULD.test(l))).toHaveLength(1)
   })
 
-  test(`typing at the moment the command's turn ends is held and goes into the fresh session, ${named}`, LIVE, async ($, on) => {
+  modTest(`typing at the moment the command's turn ends is held and goes into the fresh session, ${named}`, LIVE, async ($, on) => {
     withMod(on)
     const world = sessionWith(on)
     const host = hostWith(on, { files: { [FILE]: NOTES }, logLevel: level })
@@ -59,7 +74,7 @@ for (const level of [undefined, 'trace']) {
 
 // The reads need not come back in the order they went out: the end of a turn whose read is slow is still the end of that turn, not of the
 // next one, which started in the meantime.
-test('the end of a turn whose log level read is slow still judges that turn, when the next one starts meanwhile', DRY_RUN, async ($, on) => {
+modTest('the end of a turn whose log level read is slow still judges that turn, when the next one starts meanwhile', DRY_RUN, async ($, on) => {
   const seen = withMod(on)
   sessionWith(on)
   const host = hostWith(on)

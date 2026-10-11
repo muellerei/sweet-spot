@@ -16,6 +16,7 @@ import {
   HANDED,
   methods,
   pause,
+  modTest,
 } from './test-support'
 
 // A compact that leaves the context above the threshold is not repeated at every pause: the first tool call after it or the next pause finds
@@ -73,7 +74,7 @@ const pauseAt = async ($: Parameters<typeof startSession>[0], world: ReturnType<
   await world.clock.settle()
 }
 
-test('a compact that left the context above the threshold is not repeated at the next pause, and the failure is said once', ONLY, async ($, on) => {
+modTest('a compact that left the context above the threshold is not repeated at the next pause, and the failure is said once', ONLY, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { compact: COMPACT_DONE })
@@ -88,7 +89,7 @@ test('a compact that left the context above the threshold is not repeated at the
   expect(seen.toasts).toEqual(seen.logs)
 })
 
-test('a pause below the threshold lifts the mark: the next pause above it compacts again, and says the failure afresh', ONLY, async ($, on) => {
+modTest('a pause below the threshold lifts the mark: the next pause above it compacts again, and says the failure afresh', ONLY, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { compact: COMPACT_DONE })
@@ -102,7 +103,7 @@ test('a pause below the threshold lifts the mark: the next pause above it compac
   expect(seen.logs).toEqual([COMPACTING, COMPACTED, `handover failed, ${TOO_BIG}`, COMPACTING, COMPACTED, `handover failed, ${TOO_BIG}`])
 })
 
-test('a pause with no size does not decide whether the compact was enough', ONLY, async ($, on) => {
+modTest('a pause with no size does not decide whether the compact was enough', ONLY, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { compact: COMPACT_DONE })
@@ -115,7 +116,7 @@ test('a pause with no size does not decide whether the compact was enough', ONLY
   expect(seen.logs).toEqual([COMPACTING, COMPACTED, COMPACTING, COMPACTED])
 })
 
-test('with a fallback the second run takes the fallback, with the usual line and the reason', WITH_FALLBACK, async ($, on) => {
+modTest('with a fallback the second run takes the fallback, with the usual line and the reason', WITH_FALLBACK, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { compact: COMPACT_DONE, modelFork: modelForkAnswer('goal: finish') })
@@ -127,7 +128,7 @@ test('with a fallback the second run takes the fallback, with the usual line and
   expect(seen.logs).toEqual([COMPACTING, COMPACTED, DUE, `the compact failed (${TOO_BIG}), the mod writes the handoff instead`, HANDED])
 })
 
-test('a handoff into a fresh session lifts the mark: the next pause above the threshold compacts again', WITH_FALLBACK, async ($, on) => {
+modTest('a handoff into a fresh session lifts the mark: the next pause above the threshold compacts again', WITH_FALLBACK, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { compact: COMPACT_DONE, modelFork: modelForkAnswer('goal: finish') })
@@ -139,7 +140,7 @@ test('a handoff into a fresh session lifts the mark: the next pause above the th
   expect(host.steps.filter(s => s === 'compact')).toHaveLength(2)
 })
 
-test('a compact that failed leaves no mark: the next pause tries it again', ONLY, async ($, on) => {
+modTest('a compact that failed leaves no mark: the next pause tries it again', ONLY, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { compact: COMPACT_VETO })
@@ -150,7 +151,7 @@ test('a compact that failed leaves no mark: the next pause tries it again', ONLY
   expect(seen.logs).toEqual([COMPACTING, 'handover failed, compact was skipped (probe veto)', COMPACTING, 'handover failed, compact was skipped (probe veto)'])
 })
 
-test('the dry run sets no mark: it compacts nothing', methods('builtin-compact', 'none', { ...NO_GAP, dry_run: true }), async ($, on) => {
+modTest('the dry run sets no mark: it compacts nothing', methods('builtin-compact', 'none', { ...NO_GAP, dry_run: true }), async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { compact: COMPACT_DONE })
@@ -160,7 +161,7 @@ test('the dry run sets no mark: it compacts nothing', methods('builtin-compact',
   expect(seen.logs).toEqual(['dry run, would compact now, context 210000 tokens', 'dry run, would compact now, context 210000 tokens'])
 })
 
-test('a compact that left the context above the threshold is logged at the pause that finds it', ONLY, async ($, on) => {
+modTest('a compact that left the context above the threshold is logged at the pause that finds it', ONLY, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { logLevel: 'debug', compact: COMPACT_DONE })
@@ -176,7 +177,7 @@ test('a compact that left the context above the threshold is logged at the pause
 const toolCall = ($: Parameters<typeof startSession>[0], extra: object = {}) =>
   $.tool.call({ tool: 'Read', file_path: '/tmp/a', tool_use_id: 'u1', ...extra } as never)
 
-test('the first tool call after a compact judges it: a turn that reads a lot afterwards does not block the next handover', ONLY, async ($, on) => {
+modTest('the first tool call after a compact judges it: a turn that reads a lot afterwards does not block the next handover', ONLY, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { compact: COMPACT_DONE })
@@ -189,7 +190,7 @@ test('the first tool call after a compact judges it: a turn that reads a lot aft
   expect(seen.logs).toEqual([COMPACTING, COMPACTED, 'compacting now, context 260000 tokens', COMPACTED])
 })
 
-test('a compact that left the context above the threshold is found at the first tool call after it', ONLY, async ($, on) => {
+modTest('a compact that left the context above the threshold is found at the first tool call after it', ONLY, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { compact: COMPACT_DONE })
@@ -204,7 +205,7 @@ test('a compact that left the context above the threshold is found at the first 
   expect(seen.logs).toEqual([COMPACTING, COMPACTED, `handover failed, ${TOO_BIG}`])
 })
 
-test("a subagent's tool call, or one with no size, does not judge the compact: the pause does", ONLY, async ($, on) => {
+modTest("a subagent's tool call, or one with no size, does not judge the compact: the pause does", ONLY, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { compact: COMPACT_DONE })

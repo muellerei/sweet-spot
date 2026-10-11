@@ -27,6 +27,7 @@ import {
   ANSWERED,
   COMPACT_ONLY,
   pause,
+  modTest,
 } from './test-support'
 
 // Claude Code's own /compact as a way to hand over: the session stays, only smaller, and nothing is cleared or submitted after it.
@@ -34,7 +35,7 @@ import {
 const HANDOFF_BY_MOD = firstMessage(ANSWERED.text)
 const SKIPPED = 'compact was skipped (probe veto)'
 
-test('compact as the main method compacts the session and clears and submits nothing', methods('builtin-compact', 'none'), async ($, on) => {
+modTest('compact as the main method compacts the session and clears and submits nothing', methods('builtin-compact', 'none'), async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { compact: COMPACT_DONE })
@@ -46,7 +47,7 @@ test('compact as the main method compacts the session and clears and submits not
 })
 
 // The host refuses a compact from inside the stop; the mod judges only when the stop and the end of the turn are both in.
-test('compact is called after the end of the turn that raised it, not after the stop alone', methods('builtin-compact', 'none'), async ($, on) => {
+modTest('compact is called after the end of the turn that raised it, not after the stop alone', methods('builtin-compact', 'none'), async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { compact: COMPACT_DONE })
@@ -60,17 +61,21 @@ test('compact is called after the end of the turn that raised it, not after the 
   expect(host.steps).toEqual(['compact'])
 })
 
-test('a compact the host refuses, as it does in a headless session, fails the handoff with the reason', methods('builtin-compact', 'none'), async ($, on) => {
-  const seen = withMod(on)
-  const world = sessionWith(on)
-  const host = hostWith(on)
-  await reachThreshold($, world)
-  expect(host.steps).toEqual(['compact'])
-  expect(seen.logs[0]).toBe(COMPACTING)
-  expect(seen.logs[1]).toMatch(/^handover failed, compact was refused \(/)
-})
+modTest(
+  'a compact the host refuses, as it does in a headless session, fails the handoff with the reason',
+  methods('builtin-compact', 'none'),
+  async ($, on) => {
+    const seen = withMod(on)
+    const world = sessionWith(on)
+    const host = hostWith(on)
+    await reachThreshold($, world)
+    expect(host.steps).toEqual(['compact'])
+    expect(seen.logs[0]).toBe(COMPACTING)
+    expect(seen.logs[1]).toMatch(/^handover failed, compact was refused \(/)
+  },
+)
 
-test('a compact a hook vetoes fails the handoff with the veto', methods('builtin-compact', 'none'), async ($, on) => {
+modTest('a compact a hook vetoes fails the handoff with the veto', methods('builtin-compact', 'none'), async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { compact: COMPACT_VETO })
@@ -78,7 +83,7 @@ test('a compact a hook vetoes fails the handoff with the veto', methods('builtin
   expect(seen.logs).toEqual([COMPACTING, failure(SKIPPED)])
 })
 
-test('a refused or vetoed compact is followed by the fallback, which says why', methods('builtin-compact', 'internal-handoff'), async ($, on) => {
+modTest('a refused or vetoed compact is followed by the fallback, which says why', methods('builtin-compact', 'internal-handoff'), async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { modelFork: ANSWERED, compact: COMPACT_VETO })
@@ -87,7 +92,7 @@ test('a refused or vetoed compact is followed by the fallback, which says why', 
   expect(seen.logs).toEqual([COMPACTING, `the compact failed (${SKIPPED}), the mod writes the handoff instead`, HANDED])
 })
 
-test(
+modTest(
   'a failed internal handoff is followed by a compact as the fallback, and the message names the way that worked',
   methods('internal-handoff', 'builtin-compact'),
   async ($, on) => {
@@ -101,7 +106,7 @@ test(
   },
 )
 
-test('a failed /clear of the main way is followed by a compact: it needs no /clear', methods('external-command', 'builtin-compact'), async ($, on) => {
+modTest('a failed /clear of the main way is followed by a compact: it needs no /clear', methods('external-command', 'builtin-compact'), async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES }, failRun: ['clear'], compact: COMPACT_DONE })
@@ -112,7 +117,7 @@ test('a failed /clear of the main way is followed by a compact: it needs no /cle
   expect(seen.logs).toEqual([DUE, `the handoff through the command failed (${why}), compacting instead`, COMPACTED])
 })
 
-test('both ways failing say both reasons, the compact last', methods('internal-handoff', 'builtin-compact'), async ($, on) => {
+modTest('both ways failing say both reasons, the compact last', methods('internal-handoff', 'builtin-compact'), async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on)
@@ -121,7 +126,7 @@ test('both ways failing say both reasons, the compact last', methods('internal-h
   expect(seen.logs.at(-1)).toMatch(new RegExp(`^handover failed, ${first}; compact was refused \\(`))
 })
 
-test('the dry run says it would compact, and does nothing', { options: { dry_run: true, handoff_method: 'builtin-compact' } }, async ($, on) => {
+modTest('the dry run says it would compact, and does nothing', { options: { dry_run: true, handoff_method: 'builtin-compact' } }, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { compact: COMPACT_DONE })
@@ -130,7 +135,7 @@ test('the dry run says it would compact, and does nothing', { options: { dry_run
   expect(seen.logs).toEqual(['dry run, would compact now, context 210000 tokens'])
 })
 
-test('a compact is held back by running work and by the minimum gap like any handoff', COMPACT_ONLY, async ($, on) => {
+modTest('a compact is held back by running work and by the minimum gap like any handoff', COMPACT_ONLY, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { compact: COMPACT_DONE })
@@ -155,7 +160,7 @@ test('a compact is held back by running work and by the minimum gap like any han
   ])
 })
 
-test('the emergency brake compacts despite running work, and says what it overrode', COMPACT_ONLY, async ($, on) => {
+modTest('the emergency brake compacts despite running work, and says what it overrode', COMPACT_ONLY, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on, { tokens: 350_000 })
   const host = hostWith(on, { compact: COMPACT_DONE })

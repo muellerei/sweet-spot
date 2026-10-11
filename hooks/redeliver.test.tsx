@@ -1,4 +1,4 @@
-import { test, expect } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
 
 import { firstMessage } from './handoff'
 import {
@@ -26,6 +26,7 @@ import {
   INTERNAL_HANDOFF_ALSO_FAILED,
   PENDING,
   submits,
+  modTest,
 } from './test-support'
 
 // The reason a handoff failed is kept in the store, where `/clear` does not reach it, and the message that did not reach the fresh session
@@ -37,7 +38,7 @@ const USAGE =
   'use `/sweet-spot later [tokens]` to move the next handover back, or `/sweet-spot redeliver` to submit again the handoff that did not reach the fresh session'
 const REDELIVERING = 'redelivering the handoff'
 
-test('the command is registered when a session starts, and not again at its first turn', async ($, on) => {
+modTest('the command is registered when a session starts, and not again at its first turn', async ($, on) => {
   const seen = withMod(on)
   sessionWith(on)
   await startSession($)
@@ -54,7 +55,7 @@ test('the command is registered when a session starts, and not again at its firs
   ])
 })
 
-test('a mod loaded into a running session registers the command at its first turn, once', async ($, on) => {
+modTest('a mod loaded into a running session registers the command at its first turn, once', async ($, on) => {
   const seen = withMod(on)
   sessionWith(on)
   await startTurn($, 't1')
@@ -63,7 +64,7 @@ test('a mod loaded into a running session registers the command at its first tur
   expect(seen.registered).toEqual(['sweet-spot'])
 })
 
-test('a command the host refuses is said, and the mod goes on without it', async ($, on) => {
+modTest('a command the host refuses is said, and the mod goes on without it', async ($, on) => {
   const seen = withMod(on)
   seen.refuse = 'taken'
   sessionWith(on)
@@ -72,7 +73,7 @@ test('a command the host refuses is said, and the mod goes on without it', async
   expect(seen.logs).toEqual(['could not register its command (sweet-spot: $.command.register: taken)'])
 })
 
-test('a pending message from an earlier handoff is not mistaken for the typing of a later one, and stays to be redelivered', NO_GAP, async ($, on) => {
+modTest('a pending message from an earlier handoff is not mistaken for the typing of a later one, and stays to be redelivered', NO_GAP, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES } })
@@ -91,7 +92,7 @@ test('a pending message from an earlier handoff is not mistaken for the typing o
   expect(host.store.has(PENDING)).toBe(false)
 })
 
-test('redeliver submits the first message that did not arrive, into the session as it is, once, and then it is no longer pending', LIVE, async ($, on) => {
+modTest('redeliver submits the first message that did not arrive, into the session as it is, once, and then it is no longer pending', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES } })
@@ -109,7 +110,7 @@ test('redeliver submits the first message that did not arrive, into the session 
   expect(submits(host)).toHaveLength(2)
 })
 
-test('redeliver carries the typing that was held with the first message', LIVE, async ($, on) => {
+modTest('redeliver carries the typing that was held with the first message', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES } })
@@ -123,7 +124,7 @@ test('redeliver carries the typing that was held with the first message', LIVE, 
   expect(submits(host).at(-1)).toBe(`submit ${FIRST}\n\nTyped while the handoff ran:\nalso this`)
 })
 
-test('a redelivery that fails leaves the message pending, says why, and keeps the new reason', LIVE, async ($, on) => {
+modTest('a redelivery that fails leaves the message pending, says why, and keeps the new reason', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES } })
@@ -141,7 +142,7 @@ test('a redelivery that fails leaves the message pending, says why, and keeps th
   expect(host.store.has(PENDING)).toBe(false)
 })
 
-test('redeliver with nothing pending says so and submits nothing', LIVE, async ($, on) => {
+modTest('redeliver with nothing pending says so and submits nothing', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on)
@@ -151,7 +152,7 @@ test('redeliver with nothing pending says so and submits nothing', LIVE, async (
   expect(submits(host)).toEqual([])
 })
 
-test('redeliver never submits what another session left pending', LIVE, async ($, on) => {
+modTest('redeliver never submits what another session left pending', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { store: new Map([['pending:other', 'not mine']]) })
@@ -162,7 +163,7 @@ test('redeliver never submits what another session left pending', LIVE, async ($
   expect(host.store.get('pending:other')).toBe('not mine')
 })
 
-test('redeliver in a session other than the one the handoff was meant for submits nothing and leaves the message pending', LIVE, async ($, on) => {
+modTest('redeliver in a session other than the one the handoff was meant for submits nothing and leaves the message pending', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES } })
@@ -175,7 +176,7 @@ test('redeliver in a session other than the one the handoff was meant for submit
   expect(seen.logs.at(-1)).toBe('handover failed, the message belongs to another session than this one')
 })
 
-test('a second redelivery while the first is under way submits nothing more', LIVE, async ($, on) => {
+modTest('a second redelivery while the first is under way submits nothing more', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES } })
@@ -186,7 +187,7 @@ test('a second redelivery while the first is under way submits nothing more', LI
   expect(submits(host)).toHaveLength(2)
 })
 
-test('redeliver while a handoff is under way is refused, as the message is not yet known to have failed', LIVE, async ($, on) => {
+modTest('redeliver while a handoff is under way is refused, as the message is not yet known to have failed', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES } })
@@ -198,7 +199,7 @@ test('redeliver while a handoff is under way is refused, as the message is not y
   expect(submits(host)).toEqual([`submit ${FIRST}`])
 })
 
-test('redeliver when the store cannot be read says why and leaves the message pending', LIVE, async ($, on) => {
+modTest('redeliver when the store cannot be read says why and leaves the message pending', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES } })
@@ -214,7 +215,7 @@ test('redeliver when the store cannot be read says why and leaves the message pe
 })
 
 // The command runs at once while an answer runs, and a redelivery submits a message: it waits until the answer is done.
-test('redeliver while an answer runs is turned down and changes nothing, and works once the answer is done', LIVE, async ($, on) => {
+modTest('redeliver while an answer runs is turned down and changes nothing, and works once the answer is done', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES } })
@@ -230,7 +231,7 @@ test('redeliver while an answer runs is turned down and changes nothing, and wor
   expect(submits(host)).toEqual([`submit ${FIRST}`, `submit ${FIRST}`])
 })
 
-test('an answer that ends without an answer, aborted or in an error, no longer counts as running', LIVE, async ($, on) => {
+modTest('an answer that ends without an answer, aborted or in an error, no longer counts as running', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES } })
@@ -241,7 +242,7 @@ test('an answer that ends without an answer, aborted or in an error, no longer c
 })
 
 // Settings it cannot trust stop the mod after the start of a turn is seen, before its end is: the answer must not seem to run on.
-test('with settings it cannot trust, redeliver after an answer has nothing to redeliver', { options: { handoff_command: '/handoff' } }, async ($, on) => {
+modTest('with settings it cannot trust, redeliver after an answer has nothing to redeliver', { options: { handoff_command: '/handoff' } }, async ($, on) => {
   withMod(on)
   sessionWith(on)
   await startTurn($, 't1')
@@ -250,7 +251,7 @@ test('with settings it cannot trust, redeliver after an answer has nothing to re
 })
 
 for (const args of ['', 'help', 'redeliver now', 'REDELIVER']) {
-  test(`the command with "${args}" tells what it does and submits nothing`, LIVE, async ($, on) => {
+  modTest(`the command with "${args}" tells what it does and submits nothing`, LIVE, async ($, on) => {
     withMod(on)
     const world = sessionWith(on)
     const host = hostWith(on, { files: { [FILE]: NOTES } })
@@ -322,7 +323,7 @@ const missing = ['command', 'turn', 'path', 'read']
 for (const [name, first, arrange, act, own, sessionId] of reasons) {
   const stage = missing.includes(first) ? 'model-fork' : first
   const reason = stage === 'model-fork' ? `${own}; ${INTERNAL_HANDOFF_ALSO_FAILED}` : stage === 'clear' ? `${own}; the fallback needs /clear too` : own
-  test(`when ${name}, the reason is kept in the store with the stage and the session`, NO_GAP, async ($, on) => {
+  modTest(`when ${name}, the reason is kept in the store with the stage and the session`, NO_GAP, async ($, on) => {
     const seen = withMod(on)
     const world = sessionWith(on)
     const host = hostWith(on)
@@ -334,7 +335,7 @@ for (const [name, first, arrange, act, own, sessionId] of reasons) {
   })
 }
 
-test('a handoff that succeeds takes the reason of an earlier failure out of the store', NO_GAP, async ($, on) => {
+modTest('a handoff that succeeds takes the reason of an earlier failure out of the store', NO_GAP, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { commands: [] })
@@ -350,7 +351,7 @@ test('a handoff that succeeds takes the reason of an earlier failure out of the 
   expect(host.store.has('failure')).toBe(false)
 })
 
-test('a reason that cannot be written to the store does not change what is said or done', LIVE, async ($, on) => {
+modTest('a reason that cannot be written to the store does not change what is said or done', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { commands: [], failStore: ['set:failure'] })
@@ -359,7 +360,7 @@ test('a reason that cannot be written to the store does not change what is said 
   expect(host.store.has('failure')).toBe(false)
 })
 
-test('a pending message that cannot be removed after the submit gets through is no failure, and is not sent again', LIVE, async ($, on) => {
+modTest('a pending message that cannot be removed after the submit gets through is no failure, and is not sent again', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES }, failStore: [`delete:${PENDING}`] })

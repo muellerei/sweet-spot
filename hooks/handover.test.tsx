@@ -1,4 +1,4 @@
-import { test, expect } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
 
 import { ASK_FOR_PATH, firstMessage } from './handoff'
 import {
@@ -24,6 +24,7 @@ import {
   failure,
   fellBack,
   INTERNAL_HANDOFF_ALSO_FAILED,
+  modTest,
 } from './test-support'
 
 // The handoff through the user's own command, with the dry run off: the command runs as a turn of its own, the end of that turn is
@@ -33,7 +34,7 @@ const RUN = `run handoff ${ASK_FOR_PATH}`
 
 type World = SessionWorld
 
-test('a due handoff runs the command, waits for its turn, reads the file, clears and submits it as the first message', LIVE, async ($, on) => {
+modTest('a due handoff runs the command, waits for its turn, reads the file, clears and submits it as the first message', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES } })
@@ -45,7 +46,7 @@ test('a due handoff runs the command, waits for its turn, reads the file, clears
   expect(seen.toasts).toEqual([DUE, HANDED])
 })
 
-test('the command is started after the stop has returned, not inside it', LIVE, async ($, on) => {
+modTest('the command is started after the stop has returned, not inside it', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on)
@@ -58,7 +59,7 @@ test('the command is started after the stop has returned, not inside it', LIVE, 
   expect(host.steps).toEqual([RUN])
 })
 
-test('the dry run starts nothing', DRY_RUN, async ($, on) => {
+modTest('the dry run starts nothing', DRY_RUN, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on)
@@ -66,7 +67,7 @@ test('the dry run starts nothing', DRY_RUN, async ($, on) => {
   expect(host.steps).toEqual([])
 })
 
-test('the command named is the one run, although another ends in the same name', LIVE, async ($, on) => {
+modTest('the command named is the one run, although another ends in the same name', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { commands: ['claude-mem:handoff', 'handoff'] })
@@ -74,7 +75,7 @@ test('the command named is the one run, although another ends in the same name',
   expect(host.steps).toEqual([RUN])
 })
 
-test('without a command of that name nothing runs, and the reason is said', LIVE, async ($, on) => {
+modTest('without a command of that name nothing runs, and the reason is said', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { commands: ['claude-mem:handoff', 'x:handoff'] })
@@ -87,7 +88,7 @@ test('without a command of that name nothing runs, and the reason is said', LIVE
   ])
 })
 
-test('a stop before the end of its turn waits for that end, and the end is not the one the handoff awaits', LIVE, async ($, on) => {
+modTest('a stop before the end of its turn waits for that end, and the end is not the one the handoff awaits', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES } })
@@ -103,7 +104,7 @@ test('a stop before the end of its turn waits for that end, and the end is not t
   expect(host.steps).toEqual([RUN, 'run clear', `submit ${firstMessage(NOTES)}`])
 })
 
-test('the promise of the command settling is not its end: only the end of the following turn goes on, and a subagent ends none', LIVE, async ($, on) => {
+modTest('the promise of the command settling is not its end: only the end of the following turn goes on, and a subagent ends none', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES } })
@@ -116,7 +117,7 @@ test('the promise of the command settling is not its end: only the end of the fo
   expect(host.steps).toEqual([RUN])
 })
 
-test("the end of a turn that is not the command's is not the end awaited", LIVE, async ($, on) => {
+modTest("the end of a turn that is not the command's is not the end awaited", LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES } })
@@ -130,7 +131,7 @@ test("the end of a turn that is not the command's is not the end awaited", LIVE,
   expect(host.steps).toEqual([RUN, 'run clear', `submit ${firstMessage(NOTES)}`])
 })
 
-test('without a path in the answer the newest handoff file written since the command started is taken', LIVE, async ($, on) => {
+modTest('without a path in the answer the newest handoff file written since the command started is taken', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { tmpdir: '/var/T/', files: { '/var/T/handoff-new.md': NOTES } })
@@ -145,7 +146,7 @@ test('without a path in the answer the newest handoff file written since the com
   expect(host.steps).toEqual([RUN, 'run clear', `submit ${firstMessage(NOTES)}`])
 })
 
-test('with no TMPDIR the temp directory is /tmp', LIVE, async ($, on) => {
+modTest('with no TMPDIR the temp directory is /tmp', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { tmpdir: undefined, files: { '/tmp/handoff-a.md': NOTES } })
@@ -155,7 +156,7 @@ test('with no TMPDIR the temp directory is /tmp', LIVE, async ($, on) => {
   expect(host.steps).toEqual([RUN, 'run clear', `submit ${firstMessage(NOTES)}`])
 })
 
-test('the file of the answer wins over a newer one in the temp directory', LIVE, async ($, on) => {
+modTest('the file of the answer wins over a newer one in the temp directory', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES, '/tmp/handoff-newer.md': 'other' } })
@@ -257,7 +258,7 @@ for (const [name, arrange, act, own, steps] of failing) {
   const replaced = !notReplaced.includes(name)
   // A failure at /clear leaves the fallback nothing to try: it needs /clear too, and the reason says so.
   const reason = replaced ? `${own}; ${INTERNAL_HANDOFF_ALSO_FAILED}` : name === '/clear fails' ? `${own}; the fallback needs /clear too` : own
-  test(`when ${name}, the session is left as it was, the reason is said, and a later stop tries again`, NO_GAP, async ($, on) => {
+  modTest(`when ${name}, the session is left as it was, the reason is said, and a later stop tries again`, NO_GAP, async ($, on) => {
     const seen = withMod(on)
     const world = sessionWith(on)
     const host = hostWith(on)
@@ -279,7 +280,7 @@ for (const [name, arrange, act, own, steps] of failing) {
   })
 }
 
-test('a message that does not reach the fresh session says so and where the handoff is', LIVE, async ($, on) => {
+modTest('a message that does not reach the fresh session says so and where the handoff is', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES }, dropSubmit: 'held' })
@@ -289,7 +290,7 @@ test('a message that does not reach the fresh session says so and where the hand
   expect(seen.logs).toEqual([DUE, failure(`the fresh session did not get the handoff (a hook dropped it: held); it is in ${FILE}`)])
 })
 
-test('a submit that throws says so in the same way', LIVE, async ($, on) => {
+modTest('a submit that throws says so in the same way', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { files: { [FILE]: NOTES }, rejectSubmit: true })
@@ -298,7 +299,7 @@ test('a submit that throws says so in the same way', LIVE, async ($, on) => {
   expect(seen.logs).toEqual([DUE, failure(`the fresh session did not get the handoff (no implementation for prompt.submit); it is in ${FILE}`)])
 })
 
-test('the end of the command turn after the wait timed out starts nothing', LIVE, async ($, on) => {
+modTest('the end of the command turn after the wait timed out starts nothing', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES } })
@@ -309,7 +310,7 @@ test('the end of the command turn after the wait timed out starts nothing', LIVE
 })
 
 // The time limit of one wait must not reach into the next.
-test('the time limit of a finished wait does not end the wait of the next handoff', NO_GAP, async ($, on) => {
+modTest('the time limit of a finished wait does not end the wait of the next handoff', NO_GAP, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES } })
@@ -323,7 +324,7 @@ test('the time limit of a finished wait does not end the wait of the next handof
   expect(host.steps.filter(s => s === 'run clear')).toHaveLength(2)
 })
 
-test('a command that did not start leaves no wait behind for the next handoff', NO_GAP, async ($, on) => {
+modTest('a command that did not start leaves no wait behind for the next handoff', NO_GAP, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES }, failRun: ['handoff'] })
@@ -339,7 +340,7 @@ test('a command that did not start leaves no wait behind for the next handoff', 
 
 // The loop guard. A handoff that leaves the context where it was, or a fresh session that starts over the threshold, must not hand over
 // again at every pause.
-test('without the minimum gap a second handoff follows at the next pause', NO_GAP, async ($, on) => {
+modTest('without the minimum gap a second handoff follows at the next pause', NO_GAP, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES } })
@@ -350,7 +351,7 @@ test('without the minimum gap a second handoff follows at the next pause', NO_GA
   expect(host.steps.filter(s => s === RUN)).toHaveLength(2)
 })
 
-test('after a handoff the minimum gap holds the next one back, said once, until the minutes or the turns have passed', LIVE, async ($, on) => {
+modTest('after a handoff the minimum gap holds the next one back, said once, until the minutes or the turns have passed', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES } })
@@ -366,7 +367,7 @@ test('after a handoff the minimum gap holds the next one back, said once, until 
   expect(host.steps.filter(s => s === RUN)).toHaveLength(2)
 })
 
-test('the stop that ends the command turn itself is no pause to act on, said nothing of, even with no gap', NO_GAP, async ($, on) => {
+modTest('the stop that ends the command turn itself is no pause to act on, said nothing of, even with no gap', NO_GAP, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES } })
@@ -382,7 +383,7 @@ test('the stop that ends the command turn itself is no pause to act on, said not
 })
 
 // The stop is a hook the turn waits on; nothing that goes wrong in the mod may keep the turn from ending.
-test('a stop whose reading of the session fails still ends, says so once, and a later stop is judged afresh', LIVE, async ($, on) => {
+modTest('a stop whose reading of the session fails still ends, says so once, and a later stop is judged afresh', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on, { usageError: 'no usage' })
   const host = hostWith(on)

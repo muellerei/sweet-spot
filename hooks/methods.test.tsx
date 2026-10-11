@@ -1,4 +1,4 @@
-import { test, expect } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
 
 import { ASK_FOR_PATH, DEFAULT_PROMPT, firstMessage } from './handoff'
 import {
@@ -16,6 +16,7 @@ import {
   withMod,
   methods,
   ANSWERED,
+  modTest,
 } from './test-support'
 
 // The main method and the fallback, as the two settings choose them. The tests use the settings, not the names inside the mod.
@@ -25,7 +26,7 @@ const NO_COMMAND = 'the command "handoff" does not exist'
 const MOD_GAVE_NOTHING = 'the mod could not write the handoff: there is no conversation yet to write a handoff from'
 const FALLBACK_NEEDS_CLEAR = '/clear failed (no implementation for command.run), the session is as it was; the fallback needs /clear too'
 
-test(
+modTest(
   'the main method internal-handoff alone writes the handoff, and the command that is set does not run',
   methods('internal-handoff', 'none'),
   async ($, on) => {
@@ -39,7 +40,7 @@ test(
   },
 )
 
-test(
+modTest(
   'the main method external-command with no fallback says why it failed, and the mod does not write one',
   methods('external-command', 'none'),
   async ($, on) => {
@@ -53,7 +54,7 @@ test(
   },
 )
 
-test(
+modTest(
   'the main method internal-handoff, failing, hands over to the command as the fallback and says why',
   methods('internal-handoff', 'external-command'),
   async ($, on) => {
@@ -68,7 +69,7 @@ test(
   },
 )
 
-test('both ways failing: both reasons are said, the first one first', methods('internal-handoff', 'external-command'), async ($, on) => {
+modTest('both ways failing: both reasons are said, the first one first', methods('internal-handoff', 'external-command'), async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { commands: [] })
@@ -77,7 +78,7 @@ test('both ways failing: both reasons are said, the first one first', methods('i
   expect(seen.logs).toEqual([DUE, fellBackToCommand(MOD_GAVE_NOTHING), failure(`${MOD_GAVE_NOTHING}; ${NO_COMMAND}`)])
 })
 
-test('the same value in both settings is no fallback: the way is tried once', methods('internal-handoff', 'internal-handoff'), async ($, on) => {
+modTest('the same value in both settings is no fallback: the way is tried once', methods('internal-handoff', 'internal-handoff'), async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on)
@@ -88,7 +89,7 @@ test('the same value in both settings is no fallback: the way is tried once', me
 })
 
 // `/clear` failed before it changed anything, but the fallback would need it too: the second try is skipped, and the reason says so.
-test('after /clear failed, a fallback that needs /clear too is not tried', methods('external-command', 'internal-handoff'), async ($, on) => {
+modTest('after /clear failed, a fallback that needs /clear too is not tried', methods('external-command', 'internal-handoff'), async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { files: { [FILE]: NOTES }, failRun: ['clear'], modelFork: ANSWERED })
@@ -99,7 +100,7 @@ test('after /clear failed, a fallback that needs /clear too is not tried', metho
   expect(seen.logs).toEqual([DUE, failure(FALLBACK_NEEDS_CLEAR)])
 })
 
-test('a fallback that fails at /clear adds its reason to the first one', methods('external-command', 'internal-handoff'), async ($, on) => {
+modTest('a fallback that fails at /clear adds its reason to the first one', methods('external-command', 'internal-handoff'), async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { commands: [], modelFork: ANSWERED, failRun: ['clear'] })
@@ -108,7 +109,7 @@ test('a fallback that fails at /clear adds its reason to the first one', methods
   expect(seen.logs).toEqual([DUE, fellBack(NO_COMMAND), failure(`${NO_COMMAND}; /clear failed (no implementation for command.run), the session is as it was`)])
 })
 
-test('a fallback that fails at the submit says its own reason only', methods('external-command', 'internal-handoff'), async ($, on) => {
+modTest('a fallback that fails at the submit says its own reason only', methods('external-command', 'internal-handoff'), async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { commands: [], modelFork: ANSWERED, rejectSubmit: true })

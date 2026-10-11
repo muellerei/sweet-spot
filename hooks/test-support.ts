@@ -1,10 +1,17 @@
 // What the tests share: the floor beneath the mod's calls and the questions a test asks of it.
 
-import { mock, type TestBody } from 'claude-code/testing'
+import { mock, test, type TestBody, type TestOptions, type TestRest } from 'claude-code/testing'
 import type { TurnEnd } from './pairing'
 
 export type TestEngine = Parameters<TestBody>[0]
 export type TestOn = Parameters<TestBody>[1]
+
+// A test through the host, with the countdown off unless the test sets it: the tests that are not about the countdown hand over at the pause,
+// as they did before there was one. Only the tests that pin the defaults of plugin.json take the engine's own `test`.
+export const modTest = (name: string, ...rest: TestRest) => {
+  const [options, body]: [TestOptions, TestBody] = rest.length === 1 ? [{}, rest[0]] : [rest[0], rest[1]]
+  test(name, { ...options, options: { countdown_seconds: 0, ...options.options } }, body)
+}
 
 // The engine's own answer to what the mod shows; the tests read what was said.
 export const withMod = (on: TestOn) => {
@@ -16,6 +23,8 @@ export const withMod = (on: TestOn) => {
     // What the menu shows of each command the mod registered.
     menu: [] as { name: string; description: string; argumentHint: string | undefined; immediate: true | undefined }[],
     refuse: undefined as string | undefined,
+    // Each status line the mod set, in order; undefined where it cleared the line.
+    status: [] as (string | undefined)[],
   }
   on('session.start', async (_, e) => ({ cwd: e.cwd }))
   on('command.register', async (_, e) => {
@@ -30,6 +39,10 @@ export const withMod = (on: TestOn) => {
   })
   on('ui.log', async (_, e) => {
     ;(e.to === 'debug' ? seen.debug : seen.logs).push(e.text)
+    return { value: undefined }
+  })
+  on('ui.status', async (_, e) => {
+    seen.status.push(e.text)
     return { value: undefined }
   })
   return seen
@@ -49,7 +62,11 @@ export type World = {
   block: string | undefined
   // A reason the session cannot be read with at a stop.
   usageError: string | undefined
-  // Run while a read is under way, for what happens in the middle of one: the step is `usage`.
+  // Where the session draws, as `$.session.surfaces()` answers; the band of the mod shows on `terminal` and `desktop` only.
+  surfaces: string[]
+  // What the prompt holds, as `$.prompt.read()` answers. A test sets it without `prompt.edit`, as the history, Tab or another mod fill it.
+  draft: string
+  // Run while a read is under way, for what happens in the middle of one: the step is `usage`, `agent.list` or `prompt.read`.
   during: Record<string, () => Promise<void>>
 }
 
@@ -71,6 +88,8 @@ export const sessionWith = (on: TestOn, world: Partial<World> = {}) => {
     reads: [],
     block: undefined,
     usageError: undefined,
+    surfaces: ['terminal'],
+    draft: '',
     during: {},
     ...world,
   }
@@ -83,7 +102,19 @@ export const sessionWith = (on: TestOn, world: Partial<World> = {}) => {
     } as never
   })
   on('session.turns', async () => ({ value: w.turns }))
-  on('agent.list', async () => ({ value: w.agents }) as never)
+  on('agent.list', async () => {
+    await once(w, 'agent.list')
+    return { value: w.agents } as never
+  })
+  on('session.surfaces', async () => {
+    w.reads.push('surfaces')
+    return { value: w.surfaces } as never
+  })
+  on('prompt.read', async () => {
+    await once(w, 'prompt.read')
+    w.reads.push('prompt')
+    return { value: { text: w.draft, cursor: w.draft.length } }
+  })
   on('classic.Stop', async () => (w.block === undefined ? {} : { block: w.block }))
   on('turn.start', async (_, e) => ({ turnId: e.turnId }))
   on('turn.complete', async () => ({ text: '' }))
@@ -146,6 +177,9 @@ export type Host = {
   // call, which is what the default does. The engine hands the mod its own words for a refusal, not the hook's, so the host's wording cannot be
   // set here: the test of the user's Esc calls the way with its own `Io`. Each call is the step `compact`.
   compact: Record<string, unknown>
+  // What a compact by hand (`compactByHand`, trigger `manual`) answers with: a compaction by default, or `{ skip }` for one another hook
+  // held back. Each is the step `compact manual`.
+  manualCompact: Record<string, unknown>
   // What the next `tool.call`s answer with, in order; once they are used up a call answers with an ordinary result.
   toolResults: Record<string, unknown>[]
   // The session's id, which a /clear changes unless `clearKeepsSession` is set (a /clear that returned without effect).
@@ -181,6 +215,7 @@ export const hostWith = (on: TestOn, host: Partial<Host> = {}) => {
     modelFork: { isAnswered: false, reason: 'nothing-to-fork' },
     modelForkPrompts: [],
     compact: { throws: 'not available in a headless session' },
+    manualCompact: COMPACT_DONE,
     toolResults: [],
     steps: [],
     sessionId: 'old',
@@ -230,7 +265,11 @@ export const hostWith = (on: TestOn, host: Partial<Host> = {}) => {
     return { value: e.name === 'HOME' ? h.home : h.tmpdir }
   })
   on('tool.call', async () => (h.toolResults.shift() ?? { result: 'ok', text: 'ok' }) as never)
-  on('session.compact', async () => {
+  on('session.compact', async (_, e) => {
+    if (e.trigger === 'manual') {
+      h.steps.push('compact manual')
+      return h.manualCompact as never
+    }
     h.steps.push('compact')
     await once(h, 'compact')
     if ('throws' in h.compact) throw new Error(String(h.compact.throws))
@@ -310,8 +349,11 @@ export const commandTurnEnds = async ($: TestEngine, world: SessionWorld, answer
 export const typeInto = ($: TestEngine, text: string, extra: object = {}) =>
   $.prompt.submit({ text, wait: false, origin: { kind: 'composer' }, ...extra } as never)
 
-// A person running the mod's command.
+// A person running the mod's command. Inside its hook the engine refuses a command and a compact, as the host does (`fakes.test.tsx`).
 export const runRelay = ($: TestEngine, args: string) => $.command.run({ command: 'sweet-spot', args } as never)
+
+// A person compacting by hand, with /compact.
+export const compactByHand = ($: TestEngine) => $.session.compact({ trigger: 'manual', messages: [] } as never)
 
 // What the command answered.
 export const answered = async (run: ReturnType<typeof runRelay>) => ((await run) as { text?: string }).text

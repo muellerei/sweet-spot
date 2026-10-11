@@ -52,10 +52,11 @@ export const thresholdInForce = (threshold: number, window: number, later: Later
   return later === undefined ? t : Math.max(t, Math.min(later.until, brakeOf(t, window)))
 }
 
-// A context below where `later` was asked has shrunk (a compact of any kind, or /clear), and ends it; no reading of the context changes
+// A context below where a mark was set has shrunk (a compact of any kind, or /clear), and ends it; no reading of the context changes
 // nothing, as with the compact check.
-export const laterAt = (later: Later | undefined, tokens: number | undefined): Later | undefined =>
-  later === undefined || tokens === undefined || tokens >= later.from ? later : undefined
+export const shrunk = <T extends { from: number }>(mark: T | undefined, tokens: number | undefined): T | undefined =>
+  mark === undefined || tokens === undefined || tokens >= mark.from ? mark : undefined
+export const laterAt = shrunk<Later>
 
 const busyReason = (s: Snapshot): BusyReason | undefined =>
   s.subagents > 0 ? 'subagent' : s.backgroundTasks > 0 ? 'background-task' : s.oneShotTimers > 0 ? 'one-shot-timer' : undefined

@@ -1,4 +1,4 @@
-import { test, expect } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
 
 import { firstMessage, promptPath } from './handoff'
 import {
@@ -23,6 +23,7 @@ import {
   withMod,
   type TestEngine,
   COMPACT_ONLY,
+  modTest,
 } from './test-support'
 
 // The log level is read from the environment at the start of every handler that logs, so a value changed in a settings file is in force
@@ -42,7 +43,7 @@ const handlers: [string, ($: TestEngine) => Promise<unknown>][] = [
 ]
 
 for (const [name, raise] of handlers) {
-  test(`${name} reads the log level at its start`, LIVE, async ($, on) => {
+  modTest(`${name} reads the log level at its start`, LIVE, async ($, on) => {
     const seen = withMod(on)
     sessionWith(on)
     hostWith(on, { logLevel: 'nope' })
@@ -51,7 +52,7 @@ for (const [name, raise] of handlers) {
   })
 }
 
-test('without the variable, and with a valid value, the read says nothing', LIVE, async ($, on) => {
+modTest('without the variable, and with a valid value, the read says nothing', LIVE, async ($, on) => {
   const seen = withMod(on)
   sessionWith(on)
   const host = hostWith(on)
@@ -62,7 +63,7 @@ test('without the variable, and with a valid value, the read says nothing', LIVE
   expect(warned(seen.logs)).toEqual([])
 })
 
-test('two handlers that read a bad value at once write one line', LIVE, async ($, on) => {
+modTest('two handlers that read a bad value at once write one line', LIVE, async ($, on) => {
   const seen = withMod(on)
   sessionWith(on)
   hostWith(on, { logLevel: 'nope' })
@@ -70,7 +71,7 @@ test('two handlers that read a bad value at once write one line', LIVE, async ($
   expect(warned(seen.logs)).toEqual([BAD('nope')])
 })
 
-test('a new value is in force from the next handler on', LIVE, async ($, on) => {
+modTest('a new value is in force from the next handler on', LIVE, async ($, on) => {
   const seen = withMod(on)
   sessionWith(on)
   const host = hostWith(on, { logLevel: 'info' })
@@ -81,7 +82,7 @@ test('a new value is in force from the next handler on', LIVE, async ($, on) => 
   expect(warned(seen.logs)).toEqual([BAD('nope')])
 })
 
-test('a bad value is reported once over several turns, another bad value again, and the first again after a valid one', LIVE, async ($, on) => {
+modTest('a bad value is reported once over several turns, another bad value again, and the first again after a valid one', LIVE, async ($, on) => {
   const seen = withMod(on)
   sessionWith(on)
   const host = hostWith(on, { logLevel: 'debg' })
@@ -98,7 +99,7 @@ test('a bad value is reported once over several turns, another bad value again, 
   expect(warned(seen.logs)).toEqual([BAD('debg'), BAD('verbose'), BAD('debg')])
 })
 
-test('a read that fails keeps what was read before, writes nothing, and the mod goes on with its work', LIVE, async ($, on) => {
+modTest('a read that fails keeps what was read before, writes nothing, and the mod goes on with its work', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { logLevel: 'nope' })
@@ -122,11 +123,11 @@ const MODEL_FORK_ANSWER = modelForkAnswer('goal: finish')
 const PAUSE =
   'info: pause: context 210000 of 1000000 tokens (threshold 200000, brake 350000), 0 background tasks, 0 timers, 0 subagents, turn 10, no attempt before, decided act'
 const SETTINGS =
-  'settings: threshold 200000, dry_run off, min gap 10 minutes and 5 turns, later_tokens 25000, method external-command, fallback internal-handoff, handoff command "handoff"'
+  'settings: threshold 200000, dry_run off, min gap 10 minutes and 5 turns, later_tokens 25000, countdown_seconds 0, method external-command, fallback internal-handoff, handoff command "handoff"'
 const lines = (logs: string[]) => logs.filter(l => !l.startsWith('info: settings:'))
 const diagnostic = (logs: string[]) => logs.filter(l => /^(warn|info|debug|trace): /.test(l))
 
-test('a pause is logged from the turn to the decision', LIVE, async ($, on) => {
+modTest('a pause is logged from the turn to the decision', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { ...AT('trace'), files: { [FILE]: NOTES } })
@@ -147,7 +148,7 @@ test('a pause is logged from the turn to the decision', LIVE, async ($, on) => {
   ])
 })
 
-test('at info a pause shows its line and none of the finer ones', LIVE, async ($, on) => {
+modTest('at info a pause shows its line and none of the finer ones', LIVE, async ($, on) => {
   const seen = withMod(on)
   sessionWith(on)
   hostWith(on, AT('info'))
@@ -160,7 +161,7 @@ test('at info a pause shows its line and none of the finer ones', LIVE, async ($
 })
 
 // After a reload the mod is loaded into a running session: the end of a turn can be the first it sees, and its read comes before the pause.
-test('the end of a turn as the first event after a reload shows the pause line at info', LIVE, async ($, on) => {
+modTest('the end of a turn as the first event after a reload shows the pause line at info', LIVE, async ($, on) => {
   const seen = withMod(on)
   sessionWith(on)
   hostWith(on, AT('info'))
@@ -169,7 +170,7 @@ test('the end of a turn as the first event after a reload shows the pause line a
   expect(seen.logs).toContain(PAUSE)
 })
 
-test('without the variable the mod writes no diagnostic line, and no settings line', LIVE, async ($, on) => {
+modTest('without the variable the mod writes no diagnostic line, and no settings line', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { files: { [FILE]: NOTES } })
@@ -179,7 +180,7 @@ test('without the variable the mod writes no diagnostic line, and no settings li
   expect(seen.debug).toEqual([])
 })
 
-test('the settings line goes to the transcript, not to the debug log, and ends with the log level', LIVE, async ($, on) => {
+modTest('the settings line goes to the transcript, not to the debug log, and ends with the log level', LIVE, async ($, on) => {
   const seen = withMod(on)
   sessionWith(on)
   hostWith(on, AT('info'))
@@ -188,7 +189,7 @@ test('the settings line goes to the transcript, not to the debug log, and ends w
   expect(seen.debug).toEqual([])
 })
 
-test('the settings line marks each change to info or finer, and nothing else', LIVE, async ($, on) => {
+modTest('the settings line marks each change to info or finer, and nothing else', LIVE, async ($, on) => {
   const seen = withMod(on)
   sessionWith(on)
   const host = hostWith(on)
@@ -208,7 +209,7 @@ test('the settings line marks each change to info or finer, and nothing else', L
   expect(marks()).toEqual([`info: ${SETTINGS}, log level info`, `info: ${SETTINGS}, log level debug`])
 })
 
-test('with settings the mod rejects there is no settings line', { options: { handoff_command: '/handoff' } }, async ($, on) => {
+modTest('with settings the mod rejects there is no settings line', { options: { handoff_command: '/handoff' } }, async ($, on) => {
   const seen = withMod(on)
   sessionWith(on)
   hostWith(on, AT('debug'))
@@ -222,7 +223,7 @@ for (const [level, first] of [
   ['nope', BAD('nope')],
   ['info', `info: ${SETTINGS}, log level info`],
 ]) {
-  test(`the read at ${level} writes its line before the mod introduces itself`, LIVE, async ($, on) => {
+  modTest(`the read at ${level} writes its line before the mod introduces itself`, LIVE, async ($, on) => {
     const seen = withMod(on)
     seen.refuse = 'taken'
     sessionWith(on)
@@ -232,7 +233,7 @@ for (const [level, first] of [
   })
 }
 
-test('a change to info after a bad value is marked in the read that makes it', LIVE, async ($, on) => {
+modTest('a change to info after a bad value is marked in the read that makes it', LIVE, async ($, on) => {
   const seen = withMod(on)
   sessionWith(on)
   const host = hostWith(on, AT('nope'))
@@ -242,7 +243,7 @@ test('a change to info after a bad value is marked in the read that makes it', L
   expect(seen.logs.slice(0, 2)).toEqual([BAD('nope'), `info: ${SETTINGS}, log level info`])
 })
 
-test('a stop before the end of its turn is logged as waiting, and the end as the one that judges', LIVE, async ($, on) => {
+modTest('a stop before the end of its turn is logged as waiting, and the end as the one that judges', LIVE, async ($, on) => {
   const seen = withMod(on)
   sessionWith(on)
   hostWith(on, AT('trace'))
@@ -252,7 +253,7 @@ test('a stop before the end of its turn is logged as waiting, and the end as the
   expect(lines(seen.logs)).toEqual(['trace: turn.start t1', 'trace: stop', 'debug: stop, not handing over', 'debug: judge: waiting for the end of the turn'])
 })
 
-test('an end that is no answer is logged as no pause', LIVE, async ($, on) => {
+modTest('an end that is no answer is logged as no pause', LIVE, async ($, on) => {
   const seen = withMod(on)
   sessionWith(on)
   hostWith(on, AT('trace'))
@@ -263,7 +264,7 @@ test('an end that is no answer is logged as no pause', LIVE, async ($, on) => {
   expect(seen.logs.at(-1)).toBe('debug: judge: the turn ended in aborted, no pause')
 })
 
-test('the end of an agent turn is logged raw, and judged no pause apart', LIVE, async ($, on) => {
+modTest('the end of an agent turn is logged raw, and judged no pause apart', LIVE, async ($, on) => {
   const seen = withMod(on)
   sessionWith(on)
   hostWith(on, AT('trace'))
@@ -272,7 +273,7 @@ test('the end of an agent turn is logged raw, and judged no pause apart', LIVE, 
   expect(lines(seen.logs)).toEqual(['trace: turn.complete t1 answer, agent a1', 'debug: agent a1, not a pause'])
 })
 
-test('the handoff is logged step by step', LIVE, async ($, on) => {
+modTest('the handoff is logged step by step', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { ...AT('trace'), files: { [FILE]: NOTES } })
@@ -297,7 +298,7 @@ test('the handoff is logged step by step', LIVE, async ($, on) => {
   ])
 })
 
-test('with the internal handoff as the method the log says so, as the settings line does', { options: { dry_run: false } }, async ($, on) => {
+modTest('with the internal handoff as the method the log says so, as the settings line does', { options: { dry_run: false } }, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { ...AT('info'), modelFork: MODEL_FORK_ANSWER })
@@ -307,7 +308,7 @@ test('with the internal handoff as the method the log says so, as the settings l
 
 // What the fresh session starts at, and how it grows over its first pauses, is what the handoff's reload costs: read from the log and not
 // worked out from the transcript afterwards.
-test('after a handoff the first three pauses of the fresh session are logged against the context before it', LIVE, async ($, on) => {
+modTest('after a handoff the first three pauses of the fresh session are logged against the context before it', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { ...AT('debug'), files: { [FILE]: NOTES } })
@@ -329,7 +330,7 @@ test('after a handoff the first three pauses of the fresh session are logged aga
 })
 
 // The account's windows next to each pause let the log be read against the week's limit; off a subscription there are none and the line stays as it was.
-test('a pause is logged with the rate-limit windows the account reports', LIVE, async ($, on) => {
+modTest('a pause is logged with the rate-limit windows the account reports', LIVE, async ($, on) => {
   const seen = withMod(on)
   sessionWith(on, {
     rateLimits: [
@@ -345,7 +346,7 @@ test('a pause is logged with the rate-limit windows the account reports', LIVE, 
   expect(seen.logs.find(l => l.startsWith('info: pause:'))).toContain(', limits five_hour 34.5%, seven_day 61%, decided')
 })
 
-test('the emergency brake is logged with the threshold, the brake and the work it went past', LIVE, async ($, on) => {
+modTest('the emergency brake is logged with the threshold, the brake and the work it went past', LIVE, async ($, on) => {
   const seen = withMod(on)
   sessionWith(on, { tokens: 360_000, agents: [{ status: 'running' }] })
   hostWith(on, AT('info'))
@@ -358,7 +359,7 @@ test('the emergency brake is logged with the threshold, the brake and the work i
   )
 })
 
-test('while the command is awaited, a turn that is not its own is logged, at its start and at its end', LIVE, async ($, on) => {
+modTest('while the command is awaited, a turn that is not its own is logged, at its start and at its end', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { ...AT('debug'), files: { [FILE]: NOTES } })
@@ -375,7 +376,7 @@ test('while the command is awaited, a turn that is not its own is logged, at its
 
 const PROMPT_FILE = promptPath('/home/me')
 
-test('the internal handoff is logged with where its prompt came from and how long it took', LIVE, async ($, on) => {
+modTest('the internal handoff is logged with where its prompt came from and how long it took', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { ...AT('debug'), commands: [], modelFork: MODEL_FORK_ANSWER })
@@ -384,7 +385,7 @@ test('the internal handoff is logged with where its prompt came from and how lon
   expect(seen.logs).toContain('info: internal handoff answered, 12 characters, after 0 ms')
 })
 
-test('the prompt file of the user is named in the log when the internal handoff reads it', LIVE, async ($, on) => {
+modTest('the prompt file of the user is named in the log when the internal handoff reads it', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { ...AT('debug'), commands: [], modelFork: MODEL_FORK_ANSWER, files: { [PROMPT_FILE]: 'Write it in German.' } })
@@ -392,7 +393,7 @@ test('the prompt file of the user is named in the log when the internal handoff 
   expect(seen.logs).toContain(`debug: internal handoff asked, prompt from ${PROMPT_FILE}`)
 })
 
-test('an internal handoff that never answers is a warning, with the time it was waited for', LIVE, async ($, on) => {
+modTest('an internal handoff that never answers is a warning, with the time it was waited for', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { ...AT('warn'), commands: [], modelFork: 'hang' })
@@ -401,7 +402,7 @@ test('an internal handoff that never answers is a warning, with the time it was 
   expect(seen.logs).toContain('warn: internal handoff gave nothing (timeout), after 180000 ms')
 })
 
-test('typing held before the `/clear` is logged as part of the first message', LIVE, async ($, on) => {
+modTest('typing held before the `/clear` is logged as part of the first message', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { ...AT('debug'), files: { [FILE]: NOTES } })
@@ -411,7 +412,7 @@ test('typing held before the `/clear` is logged as part of the first message', L
   expect(seen.logs).toContain('debug: held inputs in the message: 1')
 })
 
-test('typing held while the message is submitted is put in afterwards, and logged', LIVE, async ($, on) => {
+modTest('typing held while the message is submitted is put in afterwards, and logged', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { ...AT('info'), files: { [FILE]: NOTES }, during: { submit: async () => void (await typeInto($, 'late')) } })
@@ -420,7 +421,7 @@ test('typing held while the message is submitted is put in afterwards, and logge
   expect(seen.logs).toContain('info: held typing put in, 4 characters')
 })
 
-test('typing held while the message is submitted and refused afterwards is a warning, kept for redelivery', LIVE, async ($, on) => {
+modTest('typing held while the message is submitted and refused afterwards is a warning, kept for redelivery', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { ...AT('warn'), files: { [FILE]: NOTES }, rejectSubmitAfter: 1, during: { submit: async () => void (await typeInto($, 'late')) } })
@@ -432,7 +433,7 @@ test('typing held while the message is submitted and refused afterwards is a war
 // What goes wrong is said to the person and logged at `warn` beside it: the line names the kind of failure and numbers, never the reason,
 // which can carry paths, the host's words and what was typed.
 
-test('a change to the internal handoff is a warning that names the stage the command failed at', LIVE, async ($, on) => {
+modTest('a change to the internal handoff is a warning that names the stage the command failed at', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { ...AT('warn'), commands: [], modelFork: MODEL_FORK_ANSWER })
@@ -440,7 +441,7 @@ test('a change to the internal handoff is a warning that names the stage the com
   expect(diagnostic(seen.logs)).toEqual(['warn: fallback to internal-handoff (stage command)'])
 })
 
-test('a failed handoff is a warning that names its stage', LIVE, async ($, on) => {
+modTest('a failed handoff is a warning that names its stage', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { ...AT('warn'), files: { [FILE]: NOTES }, failRun: ['clear'] })
@@ -449,7 +450,7 @@ test('a failed handoff is a warning that names its stage', LIVE, async ($, on) =
   expect(diagnostic(seen.logs)).toEqual(['warn: handover failed (stage clear)'])
 })
 
-test('an internal handoff that gives nothing for a reason the mod does not know is a warning without the host words', LIVE, async ($, on) => {
+modTest('an internal handoff that gives nothing for a reason the mod does not know is a warning without the host words', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { ...AT('warn'), commands: [], modelFork: { isAnswered: false, reason: 'quota spent' } })
@@ -457,7 +458,7 @@ test('an internal handoff that gives nothing for a reason the mod does not know 
   expect(seen.logs).toContain('warn: internal handoff gave nothing (other), after 0 ms')
 })
 
-test('a handoff cancelled with Esc is logged at info, as no failure', LIVE, async ($, on) => {
+modTest('a handoff cancelled with Esc is logged at info, as no failure', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, AT('info'))
@@ -470,7 +471,7 @@ test('a handoff cancelled with Esc is logged at info, as no failure', LIVE, asyn
 
 // The compact is logged like the other ways: the ask at `debug`, the end at `info`, a failure at `warn` by its stage, never with the host's words
 // or a veto's text.
-test('a compact is logged as asked at debug and as done at info, with its time', COMPACT_ONLY, async ($, on) => {
+modTest('a compact is logged as asked at debug and as done at info, with its time', COMPACT_ONLY, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { ...AT('debug'), compact: COMPACT_DONE })
@@ -478,7 +479,7 @@ test('a compact is logged as asked at debug and as done at info, with its time',
   expect(lines(diagnostic(seen.logs)).slice(-2)).toEqual(['debug: compact asked', 'info: compacted, after 0 ms'])
 })
 
-test('a compact that is vetoed or refused is a warning that names the stage and not the reason', COMPACT_ONLY, async ($, on) => {
+modTest('a compact that is vetoed or refused is a warning that names the stage and not the reason', COMPACT_ONLY, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { ...AT('warn'), compact: COMPACT_VETO })
@@ -487,7 +488,7 @@ test('a compact that is vetoed or refused is a warning that names the stage and 
   expect(seen.logs.join('\n')).not.toContain('info:')
 })
 
-test('a compact the host refuses is a warning of its own', COMPACT_ONLY, async ($, on) => {
+modTest('a compact the host refuses is a warning of its own', COMPACT_ONLY, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, AT('warn'))
@@ -495,7 +496,7 @@ test('a compact the host refuses is a warning of its own', COMPACT_ONLY, async (
   expect(diagnostic(seen.logs)).toEqual(['warn: compact refused', 'warn: handover failed (stage compact)'])
 })
 
-test('after a compact the first pauses of the session are logged against the context before it, as after a handoff', COMPACT_ONLY, async ($, on) => {
+modTest('after a compact the first pauses of the session are logged against the context before it, as after a handoff', COMPACT_ONLY, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { ...AT('debug'), compact: COMPACT_DONE })
@@ -511,7 +512,7 @@ test('after a compact the first pauses of the session are logged against the con
 })
 
 // The first tool call after a compact that reads a size judges it, once; one that reads none says nothing and leaves it to the next.
-test('the tool call that judges a compact logs what it found at debug, and no other call does', COMPACT_ONLY, async ($, on) => {
+modTest('the tool call that judges a compact logs what it found at debug, and no other call does', COMPACT_ONLY, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { ...AT('debug'), compact: COMPACT_DONE })
@@ -528,7 +529,7 @@ test('the tool call that judges a compact logs what it found at debug, and no ot
   expect(judged()).toEqual(['debug: compact left 90000 tokens, below the threshold'])
 })
 
-test('a compact the first tool call finds not enough is said once at debug, not again at the pause', COMPACT_ONLY, async ($, on) => {
+modTest('a compact the first tool call finds not enough is said once at debug, not again at the pause', COMPACT_ONLY, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { ...AT('debug'), compact: COMPACT_DONE })
@@ -542,7 +543,7 @@ test('a compact the first tool call finds not enough is said once at debug, not 
   expect(seen.logs.filter(l => l.startsWith('debug: compact left'))).toEqual(['debug: compact left the context above the threshold'])
 })
 
-test('a size the first tool call after a compact cannot read is said at debug, and the pause judges the compact', COMPACT_ONLY, async ($, on) => {
+modTest('a size the first tool call after a compact cannot read is said at debug, and the pause judges the compact', COMPACT_ONLY, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { ...AT('debug'), compact: COMPACT_DONE })
@@ -552,7 +553,7 @@ test('a size the first tool call after a compact cannot read is said at debug, a
   expect(seen.logs.filter(l => l.includes('tool call'))).toEqual(['debug: could not read the context size at a tool call, the pause judges the compact'])
 })
 
-test('a pause that cannot be read is a warning once, as the line the person gets', LIVE, async ($, on) => {
+modTest('a pause that cannot be read is a warning once, as the line the person gets', LIVE, async ($, on) => {
   const seen = withMod(on)
   sessionWith(on, { usageError: 'down' })
   hostWith(on, AT('warn'))
@@ -565,7 +566,7 @@ test('a pause that cannot be read is a warning once, as the line the person gets
   expect(diagnostic(seen.logs)).toEqual(['warn: could not check for a handoff'])
 })
 
-test('settings the mod rejects are a warning with their number', { options: { handoff_command: '/handoff', min_gap_turns: 2.5 } }, async ($, on) => {
+modTest('settings the mod rejects are a warning with their number', { options: { handoff_command: '/handoff', min_gap_turns: 2.5 } }, async ($, on) => {
   const seen = withMod(on)
   sessionWith(on)
   hostWith(on, AT('warn'))
@@ -573,7 +574,7 @@ test('settings the mod rejects are a warning with their number', { options: { ha
   expect(diagnostic(seen.logs)).toEqual(['warn: settings rejected, 2 errors'])
 })
 
-test('a redelivery is logged where it starts and where it ends', LIVE, async ($, on) => {
+modTest('a redelivery is logged where it starts and where it ends', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { ...AT('info'), files: { [FILE]: NOTES }, dropSubmit: 'no' })
@@ -585,7 +586,7 @@ test('a redelivery is logged where it starts and where it ends', LIVE, async ($,
   expect(lines(diagnostic(seen.logs)).slice(-2)).toEqual(['info: redeliver starts', 'info: redeliver ends, delivered'])
 })
 
-test('a redelivery that fails ends with a warning that names its stage', LIVE, async ($, on) => {
+modTest('a redelivery that fails ends with a warning that names its stage', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { ...AT('info'), files: { [FILE]: NOTES }, dropSubmit: 'no' })
@@ -600,7 +601,7 @@ test('a redelivery that fails ends with a warning that names its stage', LIVE, a
   ])
 })
 
-test('the raw stop is logged at trace before any judgement, with the agent it came from', LIVE, async ($, on) => {
+modTest('the raw stop is logged at trace before any judgement, with the agent it came from', LIVE, async ($, on) => {
   const seen = withMod(on)
   sessionWith(on)
   hostWith(on, AT('trace'))
@@ -609,7 +610,7 @@ test('the raw stop is logged at trace before any judgement, with the agent it ca
   expect(lines(seen.logs)).toEqual(['trace: stop, agent a1', 'debug: stop of agent a1, not a pause'])
 })
 
-test('the raw stop is not logged at debug', LIVE, async ($, on) => {
+modTest('the raw stop is not logged at debug', LIVE, async ($, on) => {
   const seen = withMod(on)
   sessionWith(on)
   hostWith(on, AT('debug'))
@@ -620,7 +621,7 @@ test('the raw stop is not logged at debug', LIVE, async ($, on) => {
 
 // A failure caught with nothing to show for it would leave no trace at all: each has a line at `debug`.
 
-test('a pending message the store does not let go of is logged at debug', LIVE, async ($, on) => {
+modTest('a pending message the store does not let go of is logged at debug', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { ...AT('debug'), files: { [FILE]: NOTES }, failStore: ['delete:pending:old'] })
@@ -629,7 +630,7 @@ test('a pending message the store does not let go of is logged at debug', LIVE, 
   expect(seen.logs).toContain('debug: could not forget the pending message')
 })
 
-test('a failure reason the store does not keep, or does not let go of, is logged at debug', LIVE, async ($, on) => {
+modTest('a failure reason the store does not keep, or does not let go of, is logged at debug', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { ...AT('debug'), files: { [FILE]: NOTES }, failRun: ['clear'], failStore: ['set:failure', 'delete:failure'] })
@@ -639,7 +640,7 @@ test('a failure reason the store does not keep, or does not let go of, is logged
   expect(seen.logs).not.toContain('debug: could not forget the failure')
 })
 
-test('a success whose old failure reason the store does not let go of is logged at debug', LIVE, async ($, on) => {
+modTest('a success whose old failure reason the store does not let go of is logged at debug', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { ...AT('debug'), files: { [FILE]: NOTES }, failStore: ['delete:failure'] })
@@ -648,7 +649,7 @@ test('a success whose old failure reason the store does not let go of is logged 
   expect(seen.logs).toContain('debug: could not forget the failure')
 })
 
-test('a session id that cannot be read after the clear is logged at debug', LIVE, async ($, on) => {
+modTest('a session id that cannot be read after the clear is logged at debug', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { ...AT('debug'), files: { [FILE]: NOTES } })
@@ -658,7 +659,7 @@ test('a session id that cannot be read after the clear is logged at debug', LIVE
   expect(seen.logs).toContain('debug: session id unknown after the clear')
 })
 
-test('a session id that cannot be read at a redelivery is logged at debug', LIVE, async ($, on) => {
+modTest('a session id that cannot be read at a redelivery is logged at debug', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { ...AT('debug'), files: { [FILE]: NOTES }, dropSubmit: 'no' })
@@ -694,7 +695,7 @@ const scenarios: [string, Partial<import('./test-support').Host>, string][] = [
 ]
 
 for (const [name, host, answer] of scenarios) {
-  test(`at trace no diagnostic line carries text of a person or the host: ${name}`, LIVE, async ($, on) => {
+  modTest(`at trace no diagnostic line carries text of a person or the host: ${name}`, LIVE, async ($, on) => {
     const seen = withMod(on)
     seen.refuse = 'REFUSE-SECRET'
     const world = sessionWith(on)
@@ -727,7 +728,7 @@ const laterAt = async ($: TestEngine, world: ReturnType<typeof sessionWith>, tok
   await runRelay($, args)
 }
 
-test('later is logged when it is taken, turned down and spent, and the pause line shows the value it judges at', LATER_DRY, async ($, on) => {
+modTest('later is logged when it is taken, turned down and spent, and the pause line shows the value it judges at', LATER_DRY, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, AT('debug'))
@@ -745,7 +746,7 @@ test('later is logged when it is taken, turned down and spent, and the pause lin
   ])
 })
 
-test('later capped at the brake, turned down at it, and over when the context shrank', LATER_DRY, async ($, on) => {
+modTest('later capped at the brake, turned down at it, and over when the context shrank', LATER_DRY, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, AT('debug'))
@@ -761,7 +762,7 @@ test('later capped at the brake, turned down at it, and over when the context sh
   ])
 })
 
-test('later with settings the mod cannot trust is logged as turned down', { options: { handoff_command: '/handoff' } }, async ($, on) => {
+modTest('later with settings the mod cannot trust is logged as turned down', { options: { handoff_command: '/handoff' } }, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, AT('debug'))
@@ -770,7 +771,7 @@ test('later with settings the mod cannot trust is logged as turned down', { opti
   expect(laterLines(seen.logs)).toEqual(['debug: later: turned down, the settings are rejected'])
 })
 
-test('later with no reading of the context, and while a handover runs, is logged as turned down', LIVE, async ($, on) => {
+modTest('later with no reading of the context, and while a handover runs, is logged as turned down', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on, { tokens: undefined })
   hostWith(on, AT('debug'))
@@ -788,7 +789,7 @@ test('later with no reading of the context, and while a handover runs, is logged
   await world.clock.settle()
 })
 
-test('a context that cannot be read is a warning without the reason, and nothing typed is ever in a line', LATER_DRY, async ($, on) => {
+modTest('a context that cannot be read is a warning without the reason, and nothing typed is ever in a line', LATER_DRY, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, AT('trace'))

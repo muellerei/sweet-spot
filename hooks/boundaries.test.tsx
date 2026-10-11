@@ -1,4 +1,4 @@
-import { test, expect } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
 
 import {
   commandTurnEnds,
@@ -13,6 +13,7 @@ import {
   withMod,
   LIVE,
   type TestOn,
+  modTest,
 } from './test-support'
 
 // Listens beneath each call that would leave the session, and lists the ones that were made.
@@ -32,7 +33,7 @@ const listenForOutside = (on: TestOn) => {
 }
 
 // Nothing leaves the machine, no process starts, nothing is written: the floor beneath each of those answers and keeps count.
-test('a session through every outcome of a stop calls neither http nor a process, and writes nothing', async ($, on) => {
+modTest('a session through every outcome of a stop calls neither http nor a process, and writes nothing', async ($, on) => {
   const calls = listenForOutside(on)
   const seen = withMod(on)
   const world = sessionWith(on)
@@ -52,21 +53,25 @@ test('a session through every outcome of a stop calls neither http nor a process
 })
 
 // The command is the user's to write with; the mod asks it for the path of its file and for nothing else.
-test('a handoff through the command calls neither http nor a process, writes nothing, and asks the command for nothing to be written', LIVE, async ($, on) => {
-  const calls = listenForOutside(on)
-  const seen = withMod(on)
-  const world = sessionWith(on)
-  const host = hostWith(on, { files: { '/tmp/handoff-1.md': 'notes' } })
-  await reachThreshold($, world)
-  await commandTurnEnds($, world, 'HANDOFF_PATH: /tmp/handoff-1.md')
-  expect(host.steps).toHaveLength(3)
-  expect(host.steps[0]).not.toMatch(/writ|creat|sav|edit/i)
-  expect(seen.logs).toHaveLength(2)
-  expect(calls).toEqual([])
-})
+modTest(
+  'a handoff through the command calls neither http nor a process, writes nothing, and asks the command for nothing to be written',
+  LIVE,
+  async ($, on) => {
+    const calls = listenForOutside(on)
+    const seen = withMod(on)
+    const world = sessionWith(on)
+    const host = hostWith(on, { files: { '/tmp/handoff-1.md': 'notes' } })
+    await reachThreshold($, world)
+    await commandTurnEnds($, world, 'HANDOFF_PATH: /tmp/handoff-1.md')
+    expect(host.steps).toHaveLength(3)
+    expect(host.steps[0]).not.toMatch(/writ|creat|sav|edit/i)
+    expect(seen.logs).toHaveLength(2)
+    expect(calls).toEqual([])
+  },
+)
 
 // The internal handoff is the model's to run, and its answer is submitted: nothing else leaves the session, and the prompt file is only read.
-test('a handoff through an internal handoff calls neither http nor a process, and writes nothing', { options: { dry_run: false } }, async ($, on) => {
+modTest('a handoff through an internal handoff calls neither http nor a process, and writes nothing', { options: { dry_run: false } }, async ($, on) => {
   const calls = listenForOutside(on)
   withMod(on)
   const world = sessionWith(on)

@@ -1,4 +1,4 @@
-import { test, expect } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
 
 import { ASK_FOR_PATH, DEFAULT_PROMPT, firstMessage, promptPath } from './handoff'
 import {
@@ -27,6 +27,7 @@ import {
   fellBack,
   INTERNAL_HANDOFF_ALSO_FAILED,
   ANSWERED,
+  modTest,
 } from './test-support'
 
 // When the user's command is missing or its turn brings no handoff, the mod writes the handoff itself instead: the same
@@ -37,7 +38,7 @@ const PROMPT_FILE = promptPath('/home/me')
 const HANDOFF = firstMessage(ANSWERED.text)
 const NO_COMMAND = 'the command "handoff" does not exist'
 
-test('without the command the internal handoff answers, and its text is the first message of the cleared session', LIVE, async ($, on) => {
+modTest('without the command the internal handoff answers, and its text is the first message of the cleared session', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { commands: [], modelFork: ANSWERED })
@@ -50,7 +51,7 @@ test('without the command the internal handoff answers, and its text is the firs
 
 // No handoff command set, the default: the internal handoff writes the handoff at once. A command named `handoff` that happens to exist is not
 // run, and there is no fallback to report, because nothing was tried before.
-test('with no handoff command set the internal handoff writes the handoff, and no command runs', { options: { dry_run: false } }, async ($, on) => {
+modTest('with no handoff command set the internal handoff writes the handoff, and no command runs', { options: { dry_run: false } }, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { modelFork: ANSWERED })
@@ -121,7 +122,7 @@ const fallingBack: [string, (host: Host) => void, (w: SessionWorld, $: TestEngin
 ]
 
 for (const [name, arrange, act, reason] of fallingBack) {
-  test(`when ${name}, the internal handoff takes over and the reason of the change is said`, LIVE, async ($, on) => {
+  modTest(`when ${name}, the internal handoff takes over and the reason of the change is said`, LIVE, async ($, on) => {
     const seen = withMod(on)
     const world = sessionWith(on)
     const host = hostWith(on, { modelFork: ANSWERED })
@@ -135,7 +136,7 @@ for (const [name, arrange, act, reason] of fallingBack) {
 }
 
 // An interrupted turn is the user's own stop: the session is left as it was, with no internal handoff and no `/clear`.
-test("when the command's turn is interrupted, the handoff is cancelled and the session is left as it was", LIVE, async ($, on) => {
+modTest("when the command's turn is interrupted, the handoff is cancelled and the session is left as it was", LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { modelFork: ANSWERED })
@@ -148,7 +149,7 @@ test("when the command's turn is interrupted, the handoff is cancelled and the s
   expect(seen.logs).toEqual([DUE, 'cancelled, the session is as it was'])
 })
 
-test('a /clear that returns without a new session fails the handoff and submits nothing', LIVE, async ($, on) => {
+modTest('a /clear that returns without a new session fails the handoff and submits nothing', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { modelFork: ANSWERED, files: { [FILE]: NOTES } })
@@ -160,7 +161,7 @@ test('a /clear that returns without a new session fails the handoff and submits 
   expect(seen.logs).toEqual([DUE, failure('/clear returned but the session is the same, the session is as it was; the fallback needs /clear too')])
 })
 
-test('the internal handoff is not asked before the command has failed', LIVE, async ($, on) => {
+modTest('the internal handoff is not asked before the command has failed', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { modelFork: ANSWERED, files: { [FILE]: NOTES } })
@@ -196,7 +197,7 @@ const notFallingBack: [string, (host: Host) => void, string, string][] = [
 ]
 
 for (const [name, arrange, reason, answer] of notFallingBack) {
-  test(`when ${name}, the internal handoff is not asked and the handoff fails with its own reason`, LIVE, async ($, on) => {
+  modTest(`when ${name}, the internal handoff is not asked and the handoff fails with its own reason`, LIVE, async ($, on) => {
     const seen = withMod(on)
     const world = sessionWith(on)
     const host = hostWith(on, { modelFork: ANSWERED })
@@ -225,7 +226,7 @@ const givingNothing: [string, Record<string, unknown> | 'throw' | 'hang', string
 ]
 
 for (const [name, modelFork, reason] of givingNothing) {
-  test(`when the internal handoff ${name}, the handoff fails cleanly: both reasons are said and kept, nothing is cleared`, LIVE, async ($, on) => {
+  modTest(`when the internal handoff ${name}, the handoff fails cleanly: both reasons are said and kept, nothing is cleared`, LIVE, async ($, on) => {
     const seen = withMod(on)
     const world = sessionWith(on)
     const host = hostWith(on, { commands: [], modelFork })
@@ -239,27 +240,31 @@ for (const [name, modelFork, reason] of givingNothing) {
   })
 }
 
-test('an internal handoff that gave nothing is not asked again, and the minimum gap holds the next handoff back until it has passed', LIVE, async ($, on) => {
-  const seen = withMod(on)
-  const world = sessionWith(on)
-  const host = hostWith(on, { commands: [] })
-  await reachThreshold($, world)
-  await stop($)
-  await world.clock.settle()
-  await world.clock.advance(MINUTE)
-  await stop($)
-  await world.clock.settle()
-  expect(host.modelForkPrompts).toHaveLength(1)
-  expect(seen.logs.filter(l => l.includes('postponed'))).toEqual([
-    'handoff postponed, the minimum gap since the last attempt has not passed, context 210000 tokens',
-  ])
-  await world.clock.advance(10 * MINUTE)
-  await stop($)
-  await world.clock.settle()
-  expect(host.modelForkPrompts).toHaveLength(2)
-})
+modTest(
+  'an internal handoff that gave nothing is not asked again, and the minimum gap holds the next handoff back until it has passed',
+  LIVE,
+  async ($, on) => {
+    const seen = withMod(on)
+    const world = sessionWith(on)
+    const host = hostWith(on, { commands: [] })
+    await reachThreshold($, world)
+    await stop($)
+    await world.clock.settle()
+    await world.clock.advance(MINUTE)
+    await stop($)
+    await world.clock.settle()
+    expect(host.modelForkPrompts).toHaveLength(1)
+    expect(seen.logs.filter(l => l.includes('postponed'))).toEqual([
+      'handoff postponed, the minimum gap since the last attempt has not passed, context 210000 tokens',
+    ])
+    await world.clock.advance(10 * MINUTE)
+    await stop($)
+    await world.clock.settle()
+    expect(host.modelForkPrompts).toHaveLength(2)
+  },
+)
 
-test('without the minimum gap an internal handoff that gave nothing is tried again at the next pause, and not before', NO_GAP, async ($, on) => {
+modTest('without the minimum gap an internal handoff that gave nothing is tried again at the next pause, and not before', NO_GAP, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { commands: [] })
@@ -271,7 +276,7 @@ test('without the minimum gap an internal handoff that gave nothing is tried aga
   expect(host.modelForkPrompts).toHaveLength(2)
 })
 
-test('an internal handoff whose answer comes after the time limit hands nothing over', LIVE, async ($, on) => {
+modTest('an internal handoff whose answer comes after the time limit hands nothing over', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { commands: [], modelFork: ANSWERED })
@@ -285,7 +290,7 @@ test('an internal handoff whose answer comes after the time limit hands nothing 
 // The prompt of the user's own, if there is one, and the one the mod brings if not.
 const withPrompt = (files: Record<string, string>, extra: Partial<Host> = {}) => ({ commands: [], modelFork: ANSWERED, files, ...extra })
 
-test('the internal handoff is asked with the prompt file under ~/.claude, when there is one', LIVE, async ($, on) => {
+modTest('the internal handoff is asked with the prompt file under ~/.claude, when there is one', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, withPrompt({ [PROMPT_FILE]: 'Write the handoff in German.\n' }))
@@ -301,7 +306,7 @@ const withoutPromptFile: [string, Partial<Host>][] = [
 ]
 
 for (const [name, extra] of withoutPromptFile) {
-  test(`when ${name}, the internal handoff is asked with the prompt the mod brings`, LIVE, async ($, on) => {
+  modTest(`when ${name}, the internal handoff is asked with the prompt the mod brings`, LIVE, async ($, on) => {
     withMod(on)
     const world = sessionWith(on)
     const host = hostWith(on, withPrompt({}, extra))
@@ -311,7 +316,7 @@ for (const [name, extra] of withoutPromptFile) {
   })
 }
 
-test('typing while the internal handoff works is held and goes into the first message, once', LIVE, async ($, on) => {
+modTest('typing while the internal handoff works is held and goes into the first message, once', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { commands: [], modelFork: ANSWERED })
@@ -324,7 +329,7 @@ test('typing while the internal handoff works is held and goes into the first me
   expect(host.steps).toEqual(['run clear', `submit ${HANDOFF}\n\nTyped while the handoff ran:\nalso fix the lexer`])
 })
 
-test('a first message that does not reach the fresh session is kept, and redeliver submits it again', LIVE, async ($, on) => {
+modTest('a first message that does not reach the fresh session is kept, and redeliver submits it again', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   const host = hostWith(on, { commands: [], modelFork: ANSWERED, dropSubmit: 'held' })

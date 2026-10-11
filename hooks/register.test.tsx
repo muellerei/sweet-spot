@@ -1,13 +1,13 @@
 import { test, expect, mock } from 'claude-code/testing'
 
-import { endTurn, hostWith, pause, sessionWith, startSession, startTurn, stop, withMod, MINUTE, DRY_RUN } from './test-support'
+import { endTurn, hostWith, pause, sessionWith, startSession, startTurn, stop, withMod, MINUTE, DRY_RUN, modTest } from './test-support'
 
 // No `options`: the plugin gets the defaults of plugin.json. The values are typed on purpose, so the test falls when plugin.json and
 // config.ts differ, or when either changes alone. The host checks type and `min` of plugin.json before the mod loads; a test cannot
 // get a number below the minimum past it, so those rejections are tested on `configOf` directly. The settings line shows from `info` on,
 // so the log level is set: without it the test would check nothing.
 const SETTINGS =
-  'info: settings: threshold 200000, dry_run off, min gap 10 minutes and 5 turns, later_tokens 25000, method internal-handoff, fallback builtin-compact, log level info'
+  'info: settings: threshold 200000, dry_run off, min gap 10 minutes and 5 turns, later_tokens 25000, countdown_seconds 0, method internal-handoff, fallback builtin-compact, log level info'
 
 test('the settings the mod runs with are the defaults of plugin.json', async ($, on) => {
   const seen = withMod(on)
@@ -18,7 +18,7 @@ test('the settings the mod runs with are the defaults of plugin.json', async ($,
   expect(seen.debug).toEqual([])
 })
 
-test(
+modTest(
   'settings the host lets through but the mod rejects are reported loudly, and the mod runs with none',
   { options: { handoff_command: '/handoff' } },
   async ($, on) => {
@@ -31,7 +31,7 @@ test(
   },
 )
 
-test(
+modTest(
   'settings that are set show in the same line',
   {
     options: {
@@ -49,15 +49,25 @@ test(
     hostWith(on, { logLevel: 'info' })
     await startSession($)
     expect(seen.logs).toEqual([
-      'info: settings: threshold 150000, dry_run off, min gap 0 minutes and 2 turns, later_tokens 40000, method external-command, fallback builtin-compact, handoff command "claude-mem:handoff", log level info',
+      'info: settings: threshold 150000, dry_run off, min gap 0 minutes and 2 turns, later_tokens 40000, countdown_seconds 0, method external-command, fallback builtin-compact, handoff command "claude-mem:handoff", log level info',
     ])
   },
 )
 
-test('a later_tokens the host lets through but the mod rejects switches the mod off with the reason', { options: { later_tokens: 2.5 } }, async ($, on) => {
+modTest('a later_tokens the host lets through but the mod rejects switches the mod off with the reason', { options: { later_tokens: 2.5 } }, async ($, on) => {
   const seen = withMod(on)
   await startSession($)
   const text = 'off: later_tokens: 2.5 is not a whole number'
+  expect(seen.toasts).toEqual([text])
+  expect(seen.logs).toEqual([text])
+})
+
+// The test engine checks `min` and `max` of plugin.json, not that the number is whole: the mod does that (a value above `max` is tested on
+// `configOf`).
+modTest('a countdown_seconds that is not whole switches the mod off with the reason', { options: { countdown_seconds: 2.5 } }, async ($, on) => {
+  const seen = withMod(on)
+  await startSession($)
+  const text = 'off: countdown_seconds: 2.5 is not a whole number'
   expect(seen.toasts).toEqual([text])
   expect(seen.logs).toEqual([text])
 })
@@ -84,7 +94,7 @@ test('a session that starts says its settings once, not again at its first turn'
 
 const DRY = (tokens: number) => `dry run, would hand over now, context ${tokens} tokens`
 
-test('a stop of the main session past the threshold says it would hand over, with the context size', DRY_RUN, async ($, on) => {
+modTest('a stop of the main session past the threshold says it would hand over, with the context size', DRY_RUN, async ($, on) => {
   const seen = withMod(on)
   sessionWith(on, { tokens: 212_345 })
   await startSession($)
@@ -93,7 +103,7 @@ test('a stop of the main session past the threshold says it would hand over, wit
   expect(seen.logs).toEqual([DRY(212_345)])
 })
 
-test('a stop below the threshold, or in a session with no size yet, says nothing', async ($, on) => {
+modTest('a stop below the threshold, or in a session with no size yet, says nothing', async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on, { tokens: 199_999 })
   await startSession($)
@@ -103,7 +113,7 @@ test('a stop below the threshold, or in a session with no size yet, says nothing
   expect([seen.toasts, seen.logs]).toEqual([[], []])
 })
 
-test('the stop of a subagent never triggers, and does not even look at the session', async ($, on) => {
+modTest('the stop of a subagent never triggers, and does not even look at the session', async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   await startSession($)
@@ -111,7 +121,7 @@ test('the stop of a subagent never triggers, and does not even look at the sessi
   expect([seen.toasts, seen.logs, world.reads]).toEqual([[], [], []])
 })
 
-test('a stop after an interrupted, failed or refused turn never triggers; the next answer does', DRY_RUN, async ($, on) => {
+modTest('a stop after an interrupted, failed or refused turn never triggers; the next answer does', DRY_RUN, async ($, on) => {
   const seen = withMod(on)
   sessionWith(on)
   await startSession($)
@@ -127,7 +137,7 @@ test('a stop after an interrupted, failed or refused turn never triggers; the ne
   expect(seen.toasts).toEqual([DRY(210_000)])
 })
 
-test(
+modTest(
   'a turn that begins clears what the turn before ended with, so a stop that comes before its turn.complete is not held back by it',
   DRY_RUN,
   async ($, on) => {
@@ -143,7 +153,7 @@ test(
   },
 )
 
-test('the end of a subagent turn is not the end of the main turn', DRY_RUN, async ($, on) => {
+modTest('the end of a subagent turn is not the end of the main turn', DRY_RUN, async ($, on) => {
   const seen = withMod(on)
   sessionWith(on)
   await startSession($)
@@ -157,7 +167,7 @@ test('the end of a subagent turn is not the end of the main turn', DRY_RUN, asyn
 
 const tasks = (...statuses: string[]) => statuses.map(status => ({ id: 'b', type: 'shell', status, description: 'build' }))
 
-test('running work postpones the handoff, said once with the context size, and the handoff follows when the work is done', DRY_RUN, async ($, on) => {
+modTest('running work postpones the handoff, said once with the context size, and the handoff follows when the work is done', DRY_RUN, async ($, on) => {
   const seen = withMod(on)
   sessionWith(on, { tokens: 230_000 })
   await startSession($)
@@ -170,7 +180,7 @@ test('running work postpones the handoff, said once with the context size, and t
   expect(seen.toasts).toEqual([postponed, DRY(230_000)])
 })
 
-test('a subagent that is running and a timer that fires once postpone it, a recurring timer does not', DRY_RUN, async ($, on) => {
+modTest('a subagent that is running and a timer that fires once postpone it, a recurring timer does not', DRY_RUN, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   await startSession($)
@@ -187,7 +197,7 @@ test('a subagent that is running and a timer that fires once postpone it, a recu
   ])
 })
 
-test('the emergency brake hands over despite running work, and says what it overrode', DRY_RUN, async ($, on) => {
+modTest('the emergency brake hands over despite running work, and says what it overrode', DRY_RUN, async ($, on) => {
   const seen = withMod(on)
   sessionWith(on, { tokens: 350_000 })
   await startSession($)
@@ -195,7 +205,7 @@ test('the emergency brake hands over despite running work, and says what it over
   expect(seen.logs).toEqual([`${DRY(350_000)}, although a background task is running (emergency brake)`])
 })
 
-test('a window that is small against the threshold lowers it', DRY_RUN, async ($, on) => {
+modTest('a window that is small against the threshold lowers it', DRY_RUN, async ($, on) => {
   const seen = withMod(on)
   sessionWith(on, { tokens: 160_000, window: 200_000 })
   await startSession($)
@@ -203,7 +213,7 @@ test('a window that is small against the threshold lowers it', DRY_RUN, async ($
   expect(seen.logs).toEqual([DRY(160_000)])
 })
 
-test('after a dry run the next stop waits for the gap, ended by the minutes or by the turns', DRY_RUN, async ($, on) => {
+modTest('after a dry run the next stop waits for the gap, ended by the minutes or by the turns', DRY_RUN, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   await startSession($)
@@ -221,7 +231,7 @@ test('after a dry run the next stop waits for the gap, ended by the minutes or b
   expect(seen.logs).toEqual([DRY(210_000), gap, DRY(210_000), DRY(210_000)])
 })
 
-test('a count of turns that starts over, as after /clear, does not hold the gap for good: the minutes end it', DRY_RUN, async ($, on) => {
+modTest('a count of turns that starts over, as after /clear, does not hold the gap for good: the minutes end it', DRY_RUN, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on, { turns: 40 })
   await startSession($)
@@ -236,7 +246,7 @@ test('a count of turns that starts over, as after /clear, does not hold the gap 
   expect(seen.logs).toEqual([DRY(210_000), seen.logs[1], DRY(210_000)])
 })
 
-test('with the dry run off the due handoff is announced as it starts', { options: { dry_run: false } }, async ($, on) => {
+modTest('with the dry run off the due handoff is announced as it starts', { options: { dry_run: false } }, async ($, on) => {
   const seen = withMod(on)
   sessionWith(on)
   hostWith(on)
@@ -245,7 +255,7 @@ test('with the dry run off the due handoff is announced as it starts', { options
   expect(seen.logs).toEqual(['handing over now, context 210000 tokens'])
 })
 
-test('a stop does not act on settings the mod rejected', { options: { handoff_command: '/handoff' } }, async ($, on) => {
+modTest('a stop does not act on settings the mod rejected', { options: { handoff_command: '/handoff' } }, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   await startSession($)
@@ -254,7 +264,7 @@ test('a stop does not act on settings the mod rejected', { options: { handoff_co
   expect([seen.logs.length - before, world.reads]).toEqual([0, []])
 })
 
-test('a stop that another hook answers with a request to go on is no pause', async ($, on) => {
+modTest('a stop that another hook answers with a request to go on is no pause', async ($, on) => {
   const seen = withMod(on)
   sessionWith(on, { block: 'keep going' })
   await startSession($)

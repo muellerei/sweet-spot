@@ -214,7 +214,9 @@ throwaway mod for the veto. Interactive runs through tmux, from the veto on thro
 
 - **The host follows `$` only into functions of the file that declares `register`.** _Assumed._ This is why the calls on `$` live in
   `register.tsx` and the flow gets them as functions (`Io`); if it is wrong, that indirection can go.
-- **The host checks type and `min` of each setting in `plugin.json` before it loads the mod.** _Assumed._ `config.ts` checks again.
+- **The host checks type and `min` of each setting in `plugin.json` before it loads the mod.** _Assumed._ `config.ts` checks again. The
+  test engine also refuses a value above `max` ("must be at most 60") and lets a fraction through to the mod. _Seen in `claude plugin test`,
+  Claude Code 2.1.296; whether a real load does the same is not measured._
 - **A hook that throws is skipped.** _Assumed: the types say so._ A mod whose read fails should catch it itself, or the work of that hook is lost.
 - **A hook has 10 seconds.** _Assumed: the types say so (build 2.1.293)._ Long work, like a handoff, starts after the hook has
   returned.

@@ -1,12 +1,12 @@
-import { test, expect } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
 
-import { endTurn, sessionWith, startSession, startTurn, stop, withMod, DRY_RUN } from './test-support'
+import { endTurn, sessionWith, startSession, startTurn, stop, withMod, DRY_RUN, modTest } from './test-support'
 
 // The host raises the stop first, before the `turn.complete` of the same turn (docs/host-behaviour.md, Events and their order). The mod still has to give the same
 // answer either way, because only an answer may start a handoff and the stop does not say how the turn ended.
 const WOULD = /would hand over/
 
-test('a stop before the end of an answer reports once, when the end comes', DRY_RUN, async ($, on) => {
+modTest('a stop before the end of an answer reports once, when the end comes', DRY_RUN, async ($, on) => {
   const seen = withMod(on)
   sessionWith(on)
   await startSession($)
@@ -18,7 +18,7 @@ test('a stop before the end of an answer reports once, when the end comes', DRY_
 })
 
 for (const reason of ['aborted', 'error', 'refusal'] as const) {
-  test(`a stop before the end of a turn that ended ${reason} reports nothing`, async ($, on) => {
+  modTest(`a stop before the end of a turn that ended ${reason} reports nothing`, async ($, on) => {
     const seen = withMod(on)
     sessionWith(on)
     await startSession($)
@@ -29,7 +29,7 @@ for (const reason of ['aborted', 'error', 'refusal'] as const) {
   })
 }
 
-test('a stop before the end of an aborted turn does not leave the stop waiting for the next turn', async ($, on) => {
+modTest('a stop before the end of an aborted turn does not leave the stop waiting for the next turn', async ($, on) => {
   const seen = withMod(on)
   sessionWith(on)
   await startSession($)
@@ -41,7 +41,7 @@ test('a stop before the end of an aborted turn does not leave the stop waiting f
   expect(seen.logs.filter(l => WOULD.test(l))).toEqual([])
 })
 
-test('the stop of a subagent does not wait for an end', async ($, on) => {
+modTest('the stop of a subagent does not wait for an end', async ($, on) => {
   const seen = withMod(on)
   sessionWith(on)
   await startSession($)

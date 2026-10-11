@@ -1,4 +1,4 @@
-import { test, expect } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
 
 import {
   answered,
@@ -17,6 +17,7 @@ import {
   withMod,
   type SessionWorld,
   type TestEngine,
+  modTest,
 } from './test-support'
 
 // `/sweet-spot later` moves the next handover back until the context has grown by the given number of tokens past where it is now. The
@@ -41,7 +42,7 @@ const later = async ($: TestEngine, world: SessionWorld, tokens: number, args: s
   return answered(runRelay($, args))
 }
 
-test('later with a number moves the handover back that far from the context now, and says the value', LIVE, async ($, on) => {
+modTest('later with a number moves the handover back that far from the context now, and says the value', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   await startSession($)
@@ -51,28 +52,28 @@ test('later with a number moves the handover back that far from the context now,
   expect(await later($, world, 190_000, '  later   80k  ')).toBe(accepted(270_000, 190_000))
 })
 
-test('later reads a leading zero as part of the number', LIVE, async ($, on) => {
+modTest('later reads a leading zero as part of the number', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   await startSession($)
   expect(await later($, world, 199_990, 'later 0100')).toBe(accepted(200_090, 199_990))
 })
 
-test('later with no number takes later_tokens', { options: { ...LIVE.options, later_tokens: 40_000 } }, async ($, on) => {
+modTest('later with no number takes later_tokens', { options: { ...LIVE.options, later_tokens: 40_000 } }, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   await startSession($)
   expect(await later($, world, 190_000, 'later')).toBe(accepted(230_000, 190_000))
 })
 
-test('later with no number takes 25000 by default', LIVE, async ($, on) => {
+modTest('later with no number takes 25000 by default', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   await startSession($)
   expect(await later($, world, 190_000, 'later')).toBe(accepted(215_000, 190_000))
 })
 
-test('in a dry run later says what it would do', DRY, async ($, on) => {
+modTest('in a dry run later says what it would do', DRY, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   await startSession($)
@@ -81,7 +82,7 @@ test('in a dry run later says what it would do', DRY, async ($, on) => {
   )
 })
 
-test('the handover comes at the value later asked for, not at the threshold, and the next one at the threshold again', DRY, async ($, on) => {
+modTest('the handover comes at the value later asked for, not at the threshold, and the next one at the threshold again', DRY, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   await startSession($)
@@ -96,7 +97,7 @@ test('the handover comes at the value later asked for, not at the threshold, and
   expect(seen.toasts).toEqual([wouldHandOver(240_000), wouldHandOver(239_000)])
 })
 
-test('later past the emergency brake is capped there, and says so', LIVE, async ($, on) => {
+modTest('later past the emergency brake is capped there, and says so', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   await startSession($)
@@ -105,7 +106,7 @@ test('later past the emergency brake is capped there, and says so', LIVE, async 
   )
 })
 
-test('a smaller window after later caps it at the brake of that window', DRY, async ($, on) => {
+modTest('a smaller window after later caps it at the brake of that window', DRY, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   await startSession($)
@@ -118,7 +119,7 @@ test('a smaller window after later caps it at the brake of that window', DRY, as
   expect(seen.toasts).toEqual([wouldHandOver(180_000)])
 })
 
-test('the emergency brake hands over while work runs, later or not', DRY, async ($, on) => {
+modTest('the emergency brake hands over while work runs, later or not', DRY, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   await startSession($)
@@ -130,7 +131,7 @@ test('the emergency brake hands over while work runs, later or not', DRY, async 
   expect(seen.toasts).toEqual([`${wouldHandOver(350_000)}, although a subagent is running (emergency brake)`])
 })
 
-test('a context below where later was asked ends it at the next pause; a pause with no size changes nothing', DRY, async ($, on) => {
+modTest('a context below where later was asked ends it at the next pause; a pause with no size changes nothing', DRY, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   await startSession($)
@@ -143,7 +144,7 @@ test('a context below where later was asked ends it at the next pause; a pause w
   expect(seen.toasts).toEqual([wouldHandOver(210_000)])
 })
 
-test('a pause that postpones for running work keeps later', DRY, async ($, on) => {
+modTest('a pause that postpones for running work keeps later', DRY, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   await startSession($)
@@ -155,7 +156,7 @@ test('a pause that postpones for running work keeps later', DRY, async ($, on) =
   expect(seen.toasts).toEqual(['handoff postponed, a subagent is running, context 245000 tokens'])
 })
 
-test('a handover that fails still spends later: the next one comes at the threshold', NO_GAP_LIVE, async ($, on) => {
+modTest('a handover that fails still spends later: the next one comes at the threshold', NO_GAP_LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { commands: [] })
@@ -168,7 +169,7 @@ test('a handover that fails still spends later: the next one comes at the thresh
   expect(seen.toasts.at(-1)).toBe('handing over now, context 230000 tokens')
 })
 
-test('a context that shrank without a pause ends later when the command is typed', LIVE, async ($, on) => {
+modTest('a context that shrank without a pause ends later when the command is typed', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   await startSession($)
@@ -180,7 +181,7 @@ test('a context that shrank without a pause ends later when the command is typed
   expect(await later($, world, 100_000, 'later 120k')).toBe(accepted(220_000, 100_000))
 })
 
-test('a second later that moves further sets the value anew, from the context now', DRY, async ($, on) => {
+modTest('a second later that moves further sets the value anew, from the context now', DRY, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   await startSession($)
@@ -194,7 +195,7 @@ test('a second later that moves further sets the value anew, from the context no
   expect(seen.toasts).toEqual([wouldHandOver(235_000)])
 })
 
-test(
+modTest(
   'a compact that was not enough is still found out against the threshold, not against later',
   { options: { ...COMPACT_ONLY.options, min_gap_minutes: 0, min_gap_turns: 0 } },
   async ($, on) => {
@@ -227,7 +228,7 @@ for (const args of [
   'later +5',
   'later 50kk',
 ]) {
-  test(`"${args}" is turned down with what was typed, and later stays as it was`, DRY, async ($, on) => {
+  modTest(`"${args}" is turned down with what was typed, and later stays as it was`, DRY, async ($, on) => {
     const seen = withMod(on)
     const world = sessionWith(on)
     await startSession($)
@@ -244,7 +245,7 @@ const USAGE =
   'use `/sweet-spot later [tokens]` to move the next handover back, or `/sweet-spot redeliver` to submit again the handoff that did not reach the fresh session'
 
 for (const args of ['LATER 50k', 'Later', 'later50k', 'laterx']) {
-  test(`"${args}" is no later: the command tells what it does`, LIVE, async ($, on) => {
+  modTest(`"${args}" is no later: the command tells what it does`, LIVE, async ($, on) => {
     withMod(on)
     const world = sessionWith(on)
     await startSession($)
@@ -252,7 +253,7 @@ for (const args of ['LATER 50k', 'Later', 'later50k', 'laterx']) {
   })
 }
 
-test('the menu and the help name both words', LIVE, async ($, on) => {
+modTest('the menu and the help name both words', LIVE, async ($, on) => {
   const seen = withMod(on)
   sessionWith(on)
   await startSession($)
@@ -267,7 +268,7 @@ test('the menu and the help name both words', LIVE, async ($, on) => {
   expect(await answered(runRelay($, ''))).toBe(USAGE)
 })
 
-test('a later that does not move the handover further back is turned down and leaves the one that holds', DRY, async ($, on) => {
+modTest('a later that does not move the handover further back is turned down and leaves the one that holds', DRY, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   await startSession($)
@@ -280,7 +281,7 @@ test('a later that does not move the handover further back is turned down and le
   expect(seen.toasts).toEqual([wouldHandOver(230_000)])
 })
 
-test('at the emergency brake later is turned down; just below it, it is capped', LIVE, async ($, on) => {
+modTest('at the emergency brake later is turned down; just below it, it is capped', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   await startSession($)
@@ -291,7 +292,7 @@ test('at the emergency brake later is turned down; just below it, it is capped',
   )
 })
 
-test('with settings it cannot trust the mod is off, and later says why', { options: { handoff_command: '/handoff' } }, async ($, on) => {
+modTest('with settings it cannot trust the mod is off, and later says why', { options: { handoff_command: '/handoff' } }, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   await startSession($)
@@ -299,7 +300,7 @@ test('with settings it cannot trust the mod is off, and later says why', { optio
   expect(await later($, world, 190_000, 'later abc')).toBe('"abc" is not a number of tokens, use /sweet-spot later <tokens>, e.g. later 50k')
 })
 
-test('while a handover runs later is turned down', LIVE, async ($, on) => {
+modTest('while a handover runs later is turned down', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   hostWith(on)
@@ -308,7 +309,7 @@ test('while a handover runs later is turned down', LIVE, async ($, on) => {
   await world.clock.settle()
 })
 
-test('a handover that starts while later reads the context turns later down, and the handover is not moved', NO_GAP_LIVE, async ($, on) => {
+modTest('a handover that starts while later reads the context turns later down, and the handover is not moved', NO_GAP_LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   hostWith(on, { commands: [] })
@@ -325,7 +326,7 @@ test('a handover that starts while later reads the context turns later down, and
   expect(seen.toasts.at(-1)).toBe('handing over now, context 220000 tokens')
 })
 
-test('a context that cannot be read turns later down with the reason, and later stays as it was', DRY, async ($, on) => {
+modTest('a context that cannot be read turns later down with the reason, and later stays as it was', DRY, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
   await startSession($)
@@ -338,7 +339,7 @@ test('a context that cannot be read turns later down with the reason, and later 
   expect(seen.toasts).toEqual([wouldHandOver(240_000)])
 })
 
-test('with no reading of the context yet later is turned down', LIVE, async ($, on) => {
+modTest('with no reading of the context yet later is turned down', LIVE, async ($, on) => {
   withMod(on)
   const world = sessionWith(on)
   await startSession($)

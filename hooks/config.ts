@@ -13,6 +13,8 @@ export type Config = {
   minGapTurns: number
   // How far `/sweet-spot later` with no number moves a handover back, in tokens.
   laterTokens: number
+  // How long the mod waits before an automatic handover, in seconds. 0: no wait.
+  countdownSeconds: number
   // The main way, and the one tried when it fails before it changed the session. 'none': no second try.
   handoffMethod: Method
   handoffFallback: Method | 'none'
@@ -29,6 +31,7 @@ export const DEFAULTS: Config = {
   minGapMinutes: 10,
   minGapTurns: 5,
   laterTokens: 25_000,
+  countdownSeconds: 0,
   handoffMethod: 'internal-handoff',
   handoffFallback: 'builtin-compact',
   handoffCommand: '',
@@ -38,15 +41,20 @@ export const DEFAULTS: Config = {
 // is made in all three. Below this a fresh session already starts near the threshold (the CHANGELOG has the numbers, under Chosen, with the reason): every pause would hand over again.
 const MIN_THRESHOLD = 130_000
 
+// The span of `countdown_seconds`, the same as `min` and `max` in plugin.json; `docs/src/check.py` compares the two. The test engine refuses a
+// value above `max` before the mod loads, but lets a fraction through; whether a real load checks `max` is not measured.
+export const COUNTDOWN_SECONDS = { min: 0, max: 60 } as const
+
 // `JSON.stringify` writes NaN and Infinity as null.
 const show = (raw: unknown): string => (typeof raw === 'number' ? String(raw) : (JSON.stringify(raw) ?? String(raw)))
 
 type Checked<T> = { value: T } | { error: string }
 
-const finiteAtLeast = (raw: unknown, min: number, whole: boolean, why = ''): Checked<number> => {
+const finiteAtLeast = (raw: unknown, min: number, whole: boolean, why = '', max = Number.POSITIVE_INFINITY): Checked<number> => {
   if (typeof raw !== 'number') return { error: `${show(raw)} is not a number` }
   if (!Number.isFinite(raw)) return { error: `${show(raw)} is not a finite number` }
   if (raw < min) return { error: `${show(raw)} is below ${min}${why}` }
+  if (raw > max) return { error: `${show(raw)} is above ${max}` }
   if (whole && !Number.isInteger(raw)) return { error: `${show(raw)} is not a whole number` }
   return { value: raw }
 }
@@ -86,6 +94,7 @@ export const configOf = (options: Record<string, unknown>): ConfigResult => {
     minGapMinutes: take('min_gap_minutes', DEFAULTS.minGapMinutes, raw => finiteAtLeast(raw, 0, false)),
     minGapTurns: take('min_gap_turns', DEFAULTS.minGapTurns, raw => finiteAtLeast(raw, 0, true)),
     laterTokens: take('later_tokens', DEFAULTS.laterTokens, raw => finiteAtLeast(raw, 1, true)),
+    countdownSeconds: take('countdown_seconds', DEFAULTS.countdownSeconds, raw => finiteAtLeast(raw, COUNTDOWN_SECONDS.min, true, '', COUNTDOWN_SECONDS.max)),
     handoffMethod: take('handoff_method', DEFAULTS.handoffMethod, oneOf(METHODS)),
     handoffFallback: take('handoff_fallback', DEFAULTS.handoffFallback, oneOf([...METHODS, 'none'] as const)),
     handoffCommand: take('handoff_command', DEFAULTS.handoffCommand, commandName),
