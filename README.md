@@ -19,7 +19,7 @@
   <a href="#install">Install</a> · <a href="#why">Why</a> · <a href="#what-it-does">What it does</a> · <a href="#handoff-or-compact">Handoff or compact</a> · <a href="#what-it-can-reach">What it can reach</a> · <a href="#settings">Settings</a> · <a href="#limits">Limits</a> · <a href="CHANGELOG.md">Changelog</a> · <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
-sweet-spot hands a long Claude Code session over before the context gets too big, at a moment when that is safe: to a fresh session that starts from a handoff, or by Claude Code's own `/compact`. "Handover" is the word for all of these. It is a Claude Code mod (a plugin of function hooks).
+sweet-spot never acts in the middle of a turn. It waits for a pause, counts down with a "Not now", and postpones while a subagent or background task is running. Only then does it hand a long Claude Code session over before the context gets too big: to a fresh session that starts from a handoff, or by Claude Code's own `/compact`. "Handover" is the word for all of these. It is a Claude Code mod (a plugin of function hooks).
 
 ![The context bar fills past the threshold, the mod waits for a subagent, hands the session over and continues in a fresh session](docs/images/relay.svg)
 
@@ -27,9 +27,9 @@ sweet-spot hands a long Claude Code session over before the context gets too big
 
 **Built to be safe**
 
-- **Only at a pause.** Never in the middle of a turn, never from a subagent.
+- **Only at a pause.** An answer that ended in an error, a refusal or Esc is no pause, and neither is the end of a subagent.
 - **Counts down first.** A line above the prompt counts down 10 seconds, with "Not now" to move the handover back.
-- **Waits for running work.** A subagent, a background task or a timer holds it back.
+- **Waits for running work.** A subagent, a background task or a timer holds it back, until the emergency brake: 150k past the threshold, never beyond 90 percent of the window.
 - **Typing is not lost.** What you type during a handover is held and goes in when it is done.
 - **Writes nothing.** No files, no network, no processes of its own.
 
