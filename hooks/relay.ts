@@ -303,11 +303,12 @@ const throughCommand = async (io: Io, state: State, command: string): Promise<Fa
   const named = handoffPath(end.answer)
   const file = named ?? (await newestInTemp(io, since))
   io.log('trace', "the command's turn ended")
+  // No path in the line: the answer names it, and a log line is copied into bug reports.
   io.log(
     'debug',
     named !== undefined
-      ? `the answer names ${named}`
-      : `the answer names no file, ${file === undefined ? 'the temp directory has none' : `the temp directory has ${file}`}`,
+      ? 'the answer names a file'
+      : `the answer names no file, ${file === undefined ? 'the temp directory has none' : 'the temp directory has one'}`,
   )
   if (file === undefined) {
     // No file because the user declined a permission the command asked for: their own stop, not a handoff that is missing.

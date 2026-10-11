@@ -290,13 +290,25 @@ modTest('the handoff is logged step by step', LIVE, async ($, on) => {
     'trace: turn.complete t2 answer',
     'debug: judge: waiting for the stop',
     "trace: the command's turn ended",
-    `debug: the answer names ${FILE}`,
+    'debug: the answer names a file',
     `debug: file read, ${NOTES.length} characters`,
     'info: clear, session old',
     `info: submit, session new, ${message.length} characters`,
     'info: submit done',
     'handed over, the fresh session carries on from the handoff',
   ])
+})
+
+// The path comes from the model's answer, or from the name the command gave its file: a line that carries it would put it into a bug report.
+modTest('no line carries the path of the handoff file, named by the answer or found in the temp directory', LIVE, async ($, on) => {
+  const seen = withMod(on)
+  const world = sessionWith(on)
+  const host = hostWith(on, { ...AT('trace'), tmpdir: '/var/T/', files: { '/var/T/handoff-new.md': NOTES, [FILE]: NOTES } })
+  await reachThreshold($, world)
+  host.listing = [{ name: 'handoff-new.md', mtimeMs: world.clock.now() + 5 }]
+  await commandTurnEnds($, world, 'Written, but I forgot the line.')
+  expect(seen.logs).toContain('debug: the answer names no file, the temp directory has one')
+  expect(seen.logs.filter(line => line.includes('handoff-new.md') || line.includes('/var/T/'))).toEqual([])
 })
 
 modTest('with the internal handoff as the method the log says so, as the settings line does', { options: { dry_run: false } }, async ($, on) => {
