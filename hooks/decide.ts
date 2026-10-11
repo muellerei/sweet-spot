@@ -25,7 +25,8 @@ export type Snapshot = {
 // into a fresh session that does not know what it was for.
 export type BusyReason = 'subagent' | 'background-task' | 'one-shot-timer'
 
-export type DeferReason = BusyReason | 'min-gap'
+// `turn` only the end of a countdown finds: a turn that started while the countdown began, before there was one for it to end.
+export type DeferReason = BusyReason | 'min-gap' | 'turn'
 
 // `act` and `dry-run` ("would hand over") carry `forced`: the work the emergency brake handed over despite.
 export type Decision =
@@ -42,6 +43,9 @@ export const effectiveThreshold = (threshold: number, window: number): number =>
 
 // Counted from the threshold in force, which a small window has already lowered.
 export const brakeOf = (threshold: number, window: number): number => Math.min(Math.floor((window * 9) / 10), threshold + BRAKE_EXTRA)
+
+// The brake of the settings at a window, counted from the threshold in force there.
+export const brakeFor = (config: Pick<Config, 'threshold'>, window: number): number => brakeOf(effectiveThreshold(config.threshold, window), window)
 
 // The value a pause judges at: the threshold in force, or the one `later` asked for. That one is capped at the brake of the window as it
 // is now (after a change to a smaller window it would lie past the brake, or past the window, and nothing would ever hand over), and it never

@@ -41,6 +41,8 @@ export const withMod = (on: TestOn) => {
     ;(e.to === 'debug' ? seen.debug : seen.logs).push(e.text)
     return { value: undefined }
   })
+  // The band above the prompt as the host draws it with nothing of the mod's in it: empty.
+  on('ui.render', async () => ({ type: 'Box', props: {}, children: [] }) as never)
   on('ui.status', async (_, e) => {
     seen.status.push(e.text)
     return { value: undefined }
@@ -66,7 +68,7 @@ export type World = {
   surfaces: string[]
   // What the prompt holds, as `$.prompt.read()` answers. A test sets it without `prompt.edit`, as the history, Tab or another mod fill it.
   draft: string
-  // Run while a read is under way, for what happens in the middle of one: the step is `usage`, `agent.list` or `prompt.read`.
+  // Run while a read is under way, for what happens in the middle of one: the step is `usage`, `agent.list`, `surfaces` or `prompt.read`.
   during: Record<string, () => Promise<void>>
 }
 
@@ -107,6 +109,7 @@ export const sessionWith = (on: TestOn, world: Partial<World> = {}) => {
     return { value: w.agents } as never
   })
   on('session.surfaces', async () => {
+    await once(w, 'surfaces')
     w.reads.push('surfaces')
     return { value: w.surfaces } as never
   })
@@ -115,6 +118,11 @@ export const sessionWith = (on: TestOn, world: Partial<World> = {}) => {
     w.reads.push('prompt')
     return { value: { text: w.draft, cursor: w.draft.length } }
   })
+  // An edit as the editor makes it: the span from `start` to `end` replaced by what was typed, the cursor after it. `draft` stays what the
+  // test set: the key of a band button raises an edit and leaves the prompt empty (docs/host-behaviour.md, Commands).
+  on('prompt.edit', async (_, e) => ({ text: e.text.slice(0, e.start) + e.inputText + e.text.slice(e.end), cursor: e.start + e.inputText.length }))
+  // The end of the session (exit, /clear, resume), which the host echoes.
+  on('session.end', async (_, e) => ({ sessionId: e.sessionId }))
   on('classic.Stop', async () => (w.block === undefined ? {} : { block: w.block }))
   on('turn.start', async (_, e) => ({ turnId: e.turnId }))
   on('turn.complete', async () => ({ text: '' }))
@@ -145,6 +153,13 @@ export const pause = async ($: TestEngine, input: StopInput = {}) => {
 }
 
 export const startTurn = ($: TestEngine, turnId = 't1') => $.turn.start({ text: 'go', turnId })
+
+// An answer ends at this context size: a pause.
+export const pauseAt = async ($: TestEngine, world: SessionWorld, tokens: number | undefined) => {
+  world.tokens = tokens
+  await startTurn($)
+  await pause($)
+}
 
 export type Host = {
   // The names `$.command.list()` shows.

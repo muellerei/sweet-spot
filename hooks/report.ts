@@ -10,7 +10,7 @@ const BUSY: Record<BusyReason, string> = {
   'one-shot-timer': 'a timer that fires once is set',
 }
 
-const DEFERRED: Record<DeferReason, string> = { ...BUSY, 'min-gap': 'the minimum gap since the last attempt has not passed' }
+const DEFERRED: Record<DeferReason, string> = { ...BUSY, 'min-gap': 'the minimum gap since the last attempt has not passed', turn: 'an answer is running' }
 
 // `none` has nothing to say and is not asked. `method` is the way that is tried first: a compact is not a handoff, and the line says which.
 export const reportOf = (decision: Exclude<Decision, { kind: 'none' }>, method: Method): string => {
@@ -24,6 +24,9 @@ export const reportOf = (decision: Exclude<Decision, { kind: 'none' }>, method: 
       return `${compact ? 'compacting' : 'handing over'} now, context ${decision.tokens} tokens${overrode(decision.forced)}`
   }
 }
+
+// How a diagnostic line names a decision: the pause line and the end of a countdown say it the same way.
+export const decidedOf = (decision: Decision): string => `decided ${decision.kind}${decision.kind === 'defer' ? ` (${decision.reason})` : ''}`
 
 export const HANDED_OVER = 'handed over, the fresh session carries on from the handoff'
 

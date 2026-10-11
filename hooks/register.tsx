@@ -1,11 +1,13 @@
 import type { EngineInterface as Engine, Register } from 'claude-code'
 
 import { configOf, type Config, type ConfigResult } from './config'
-import { activeTasks, brakeOf, decide, effectiveThreshold, laterAt, oneShots, thresholdInForce, type Decision } from './decide'
+import { activeTasks, brakeFor, brakeOf, decide, effectiveThreshold, laterAt, oneShots, shrunk, thresholdInForce, type Decision, type Snapshot } from './decide'
 import { hold } from './hold'
 import { LATER_OVER, laterFor, tokensOf } from './later'
 import { checkOf, firstMethod, judgedLine } from './compact-check'
-import { logger, refresh, shows, type Level } from './log'
+import { bandOf, kindAt, moveBack, NOT_NOW_KEY, typed, type Countdown, type Start } from './countdown'
+import { begin, end, endedLine, press, surveyed, type Answer, type CountdownIo, type EndReason, type Expiry } from './countdown-flow'
+import { logger, refresh, shows } from './log'
 import { carryOut, endOfTurn, noteToolResult, redeliver, startOfTurn, throughMethods, why, type Failure, type Io, type Outcome } from './relay'
 import {
   ANSWER_RUNNING,
@@ -20,6 +22,7 @@ import {
   CANCELLED,
   CONTEXT_UNKNOWN,
   contextUnreadLine,
+  decidedOf,
   failedLine,
   offLine,
   reportOf,
@@ -94,6 +97,17 @@ const sessionIo = ($: Engine, state: State): Io => ({
   forget: key => $.store.delete(key),
 })
 
+const countdownIo = ($: Engine, state: State): CountdownIo => ({
+  now: () => $.clock.now(),
+  after: (ms, fn) => $.clock.after(ms, fn),
+  every: (ms, fn) => $.clock.every(ms, fn),
+  surfaces: () => $.session.surfaces(),
+  prompt: async () => (await $.prompt.read()).text,
+  redraw: () => $.ui.invalidate('ui.render'),
+  toast: text => $.ui.toast(text),
+  log: logTo($, state),
+})
+
 // The message about invalid settings and the command, once per load: at the session start, or at the first turn of a session that was already running.
 const introduce = async ($: Engine, settings: ConfigResult, state: State) => {
   if (state.introduced) return
@@ -101,6 +115,8 @@ const introduce = async ($: Engine, settings: ConfigResult, state: State) => {
   announce($, settings, state)
   await registerCommand($, state)
 }
+
+const NOT_NOW_BUTTON = 'not-now'
 
 // The one command of the mod; what it does is the word after it.
 const COMMAND = 'sweet-spot'
@@ -168,10 +184,6 @@ const redeliverText = ($: Engine, config: Config | undefined, args: string, stat
   return REDELIVERING
 }
 
-// What the command answers, and the diagnostic lines about it, which its handler writes after its read of the log level. A line never
-// holds what was typed.
-type Answer = { text: string; lines?: [Exclude<Level, 'off'>, string][] }
-
 const turnedDown = (text: string, why: string): Answer => ({ text, lines: [['debug', `later: turned down, ${why}`]] })
 
 // Moves the next handover back. It needs the context at the time it is typed, so its answer waits for that read.
@@ -192,15 +204,21 @@ const laterText = async ($: Engine, settings: ConfigResult, rest: string, state:
   if (state.handingOver) return turnedDown(HANDOFF_UNDER_WAY, 'a handover is in progress')
   if (context.tokens === undefined) return turnedDown(CONTEXT_UNKNOWN, 'the context size is unknown')
   const config = settings.config
+  const before = laterAt(state.later, context.tokens)
   const result = laterFor(config, context.window, context.tokens, state.later, asked.tokens === 'setting' ? config.laterTokens : asked.tokens)
   state.later = result.later
+  // Moving the handover back is the person's answer, not a pause that dodged it: the deferred pauses start over. A later turned down moves
+  // nothing and leaves them.
+  if (result.later !== before) state.deferred = undefined
   return { text: result.text, lines: result.lines.map(line => ['debug', line]) }
 }
+
+const verbOf = (args: string) => args.trim().split(/\s/, 1)[0]
 
 // What the command does is the word after it. `later` takes an argument, so the rest is its argument; `redeliver` takes none.
 const commandText = ($: Engine, settings: ConfigResult, args: string, state: State): Promise<Answer> | Answer => {
   const words = args.trim()
-  const verb = words.split(/\s/, 1)[0]
+  const verb = verbOf(words)
   if (verb === 'later') return laterText($, settings, words.slice(verb.length), state)
   return { text: redeliverText($, settings.ok ? settings.config : undefined, args, state) }
 }
@@ -278,25 +296,43 @@ const AFTER_HANDOFF_PAUSES = 3
 const limitsOf = (limits: readonly { kind: string; percentUsed: number }[]): string =>
   limits.length === 0 ? '' : `, limits ${limits.map(l => `${l.kind} ${l.percentUsed}%`).join(', ')}`
 
+// What a pause judges, but the clock, built the same way for the pause and for the end of a countdown. `later` is checked against the
+// context: the pause has already ended it in the state, the end of a countdown only reads it.
+const snapshotOf = (
+  e: Stop,
+  context: { tokens?: number; window: number },
+  agents: readonly { status: string }[],
+  turns: number,
+  state: State,
+): Omit<Snapshot, 'now'> => ({
+  tokens: context.tokens,
+  window: context.window,
+  backgroundTasks: activeTasks(e.background_tasks),
+  oneShotTimers: oneShots(e.session_crons),
+  subagents: agents.filter(a => a.status === 'running').length,
+  turns,
+  lastAttempt: state.lastAttempt,
+  later: laterAt(state.later, context.tokens),
+})
+
+// The line for a decision names the way tried first; with none known (a compact that was not enough, and no fallback), the setting's way.
+const reported = (decision: Exclude<Decision, { kind: 'none' }>, config: Config, state: State): string =>
+  reportOf(decision, firstMethod(config, state) ?? config.handoffMethod)
+
 const atPause = async ($: Engine, e: Stop, config: Config, state: State) => {
   const [{ context, rateLimits }, agents, turns, now] = await Promise.all([$.session.usage(), $.agent.list(), $.session.turns(), $.clock.now()])
   // A context below where `later` was asked has shrunk (a compact, /clear): the later handover is over before `decide` judges.
   const kept = laterAt(state.later, context.tokens)
   const over = state.later !== undefined && kept === undefined
   state.later = kept
-  const snapshot = {
-    tokens: context.tokens,
-    window: context.window,
-    backgroundTasks: activeTasks(e.background_tasks),
-    oneShotTimers: oneShots(e.session_crons),
-    subagents: agents.filter(a => a.status === 'running').length,
-    now,
-    turns,
-    lastAttempt: state.lastAttempt,
-    later: state.later,
-  }
+  // The deferred pauses end the same way.
+  const deferred = shrunk(state.deferred, context.tokens)
+  const deferredOver = state.deferred !== undefined && deferred === undefined
+  state.deferred = deferred
+  const snapshot = { ...snapshotOf(e, context, agents, turns, state), now }
   const log = logTo($, state)
   if (over) log('debug', LATER_OVER)
+  if (deferredOver) log('debug', 'countdown: deferred pauses over, the context shrank')
   const fresh = state.afterHandoff
   if (fresh !== undefined && fresh.pauses < AFTER_HANDOFF_PAUSES && snapshot.tokens !== undefined && snapshot.tokens < fresh.before) {
     fresh.pauses += 1
@@ -312,25 +348,79 @@ const atPause = async ($: Engine, e: Stop, config: Config, state: State) => {
   const decision = decide(snapshot, config)
   log(
     'info',
-    `pause: context ${snapshot.tokens} of ${snapshot.window} tokens (threshold ${threshold}${state.later === undefined ? '' : `, later ${thresholdInForce(config.threshold, snapshot.window, state.later)}`}, brake ${brakeOf(threshold, snapshot.window)}), ${snapshot.backgroundTasks} background tasks, ${snapshot.oneShotTimers} timers, ${snapshot.subagents} subagents, turn ${turns}, ${state.lastAttempt === undefined ? 'no attempt before' : `last attempt at turn ${state.lastAttempt.turns}`}${limitsOf(rateLimits)}, decided ${decision.kind}${decision.kind === 'defer' ? ` (${decision.reason})` : ''}${'forced' in decision && decision.forced !== undefined ? `, forced past the brake by ${decision.forced}` : ''}`,
+    `pause: context ${snapshot.tokens} of ${snapshot.window} tokens (threshold ${threshold}${state.later === undefined ? '' : `, later ${thresholdInForce(config.threshold, snapshot.window, state.later)}`}, brake ${brakeOf(threshold, snapshot.window)}), ${snapshot.backgroundTasks} background tasks, ${snapshot.oneShotTimers} timers, ${snapshot.subagents} subagents, turn ${turns}, ${state.lastAttempt === undefined ? 'no attempt before' : `last attempt at turn ${state.lastAttempt.turns}`}${limitsOf(rateLimits)}, ${decidedOf(decision)}${'forced' in decision && decision.forced !== undefined ? `, forced past the brake by ${decision.forced}` : ''}`,
   )
   if (decision.kind === 'none') {
     state.said = undefined
     return
   }
-  const report = () => reportOf(decision, firstMethod(config, state) ?? config.handoffMethod)
   if (decision.kind === 'defer') {
-    sayOnce($, state, decision.reason, report())
+    sayOnce($, state, decision.reason, reported(decision, config, state))
     return
   }
-  // A dry run counts as an attempt too: it shows the pace the real run would keep.
-  state.said = undefined
-  state.lastAttempt = { at: now, turns }
-  // `later` held for this handover, whether it goes through or not: the next one comes at the threshold.
-  if (state.later !== undefined) log('debug', 'later: spent by this handover')
-  state.later = undefined
-  if (decision.kind === 'act') handOver($, decision, config, state)
-  else say($, report())
+  // Carried out at the pause, or when the countdown runs out with a judgment of its own: only then is it an attempt and is `later` spent. A
+  // countdown that ends without a handover leaves both as they were.
+  const carry = (judged: Countdown['decision'], at: number, atTurns: number) => {
+    // A dry run counts as an attempt too: it shows the pace the real run would keep.
+    state.said = undefined
+    state.lastAttempt = { at, turns: atTurns }
+    // `later` held for this handover, whether it goes through or not: the next one comes at the threshold.
+    if (state.later !== undefined) log('debug', 'later: spent by this handover')
+    state.later = undefined
+    // A handover that began, whether it goes through or not, ends the deferred pauses.
+    state.deferred = undefined
+    if (judged.kind === 'act') handOver($, judged, config, state)
+    else say($, reported(judged, config, state))
+  }
+  const postpone = (judged: Extract<Decision, { kind: 'defer' }>) => void sayOnce($, state, judged.reason, reported(judged, config, state))
+  const expiry: Expiry = { look: () => lookAgain($, e, state), judge: s => decide(s, config), carry, postpone }
+  if (await countdownBegun($, decision, config, state, snapshot, expiry)) return
+  carry(decision, now, turns)
+}
+
+// What the end of a countdown reads to judge again, as a pause does. Background tasks and one-shot timers are the stop's: after it they
+// cannot be read, and they change only in a turn, which ends the countdown.
+const lookAgain = async ($: Engine, e: Stop, state: State): Promise<Omit<Snapshot, 'now'>> => {
+  const [{ context }, agents, turns] = await Promise.all([$.session.usage(), $.agent.list(), $.session.turns()])
+  return snapshotOf(e, context, agents, turns, state)
+}
+
+// A countdown before the handover, where one is set and the first way is known; without a first way the pause goes on as before and
+// the run says why it fails.
+const countdownBegun = async ($: Engine, decision: Countdown['decision'], config: Config, state: State, snapshot: Snapshot, expiry: Expiry) => {
+  if (config.countdownSeconds === 0) return false
+  const method = firstMethod(config, state)
+  if (method === undefined) return false
+  const { window } = snapshot
+  const kind = kindAt(snapshot, config, state.deferred?.pauses ?? 0)
+  if (kind === 'immediate') {
+    logTo($, state)('debug', 'countdown: none, at the emergency brake')
+    return false
+  }
+  // The countdown at the brake counts down to the brake, which is where it hands over.
+  const threshold = kind === 'brake' ? brakeFor(config, window) : thresholdInForce(config.threshold, window, state.later)
+  const start: Start =
+    kind === 'button' ? { kind, method, decision, threshold, moveBack: moveBack(config, window, decision.tokens) } : { kind, method, decision, threshold }
+  return begin(countdownIo($, state), state, config.countdownSeconds, start, expiry)
+}
+
+// Ends a running countdown for what a person did, at once and before any wait of the handler; the line comes after its read of the log
+// level. Nothing is moved back: the next pause counts down again.
+//
+// A hook that only watches for it passes the event on whatever goes wrong here (the `.catch` at its call): the event is the host's, and
+// a `.catch` on the hook itself would pass it on a second time where `next(e)` was what failed.
+const endCountdown = async ($: Engine, settings: ConfigResult, state: State, reason: EndReason) => {
+  if (!end(countdownIo($, state), state)) return
+  await readLevel($, settings, state)
+  logTo($, state)('debug', endedLine(reason))
+}
+
+// "Not now" moves the handover back as the command `later` with no number does, and answers the same way.
+const notNow = async ($: Engine, settings: ConfigResult, state: State) => {
+  const lines = await press(countdownIo($, state), state, () => laterText($, settings, '', state))
+  await readLevel($, settings, state)
+  const log = logTo($, state)
+  for (const [level, line] of lines) log(level, line)
 }
 
 // The stop is a hook the turn waits on and can only be asked to go on: an error here is said once and the stop ends as if the mod were absent.
@@ -374,9 +464,13 @@ export const register: Register = (on, options) => {
 
   // The redelivery's timer runs outside any handler; its lines come after its own waits, by when the read here is in.
   on('command.run', { command: COMMAND }, async ($, e) => {
+    // `later` ends a countdown before it moves the handover back. Typed, its first character has already ended it; a command raises no
+    // submit, and from the history it is expected to come with no edit either (docs/host-behaviour.md, Commands). `redeliver` leaves it running.
+    const ended = verbOf(e.args) === 'later' && end(countdownIo($, state), state)
     const { text, lines = [] } = await commandText($, settings, e.args, state)
     await readLevel($, settings, state)
     const log = logTo($, state)
+    if (ended) log('debug', endedLine('command'))
     for (const [level, line] of lines) log(level, line)
     return { text }
   }).catch((_, e, next) => next(e))
@@ -388,10 +482,13 @@ export const register: Register = (on, options) => {
     if (config !== undefined) state.answerRunning = true
     const awaited = state.turnWait !== undefined
     const own = startOfTurn(state, e.turnId)
+    // A turn is work, whoever started it (a finished background task starts one too): no handover in the middle of it.
+    const ended = end(countdownIo($, state), state)
     await readLevel($, settings, state)
     await introduce($, settings, state)
     const log = logTo($, state)
     log('trace', `turn.start ${e.turnId}`)
+    if (ended) log('debug', endedLine('turn'))
     if (awaited) log('debug', own ? `turn ${e.turnId} is the command's turn` : `turn ${e.turnId} is not the command's turn`)
     return next(e)
   })
@@ -404,7 +501,9 @@ export const register: Register = (on, options) => {
   on('prompt.submit', async ($, e, next) => {
     const reason = hold(state, e)
     const handingOver = state.handingOver
+    const ended = end(countdownIo($, state), state)
     await readLevel($, settings, state)
+    if (ended) logTo($, state)('debug', endedLine('submit'))
     if (handingOver) logTo($, state)('debug', `input while handing over (${e.origin.kind}): ${reason === undefined ? 'let through' : 'held'}`)
     return reason === undefined ? next(e) : { drop: reason }
   }).catch((_, e, next) => next(e))
@@ -429,6 +528,49 @@ export const register: Register = (on, options) => {
       logTo($, state)('debug', 'could not read the context size at a tool call, the pause judges the compact')
     }
     return out
+  })
+
+  // The end of the session (exit, /clear, a resume) ends a countdown: a /clear can come with no edit, submit or turn, from the history.
+  on('session.end', async ($, e, next) => {
+    await endCountdown($, settings, state, 'session').catch(() => {})
+    return next(e)
+  })
+
+  // A compact the mod did not start ends a countdown too. It raises no session end (the session id stays), no turn and no stop; the
+  // context it leaves is unknown at first. Only watched, before it runs. A precompute only prepares one and changes nothing. The mod's own
+  // compact comes after its countdown ran out, and meets none.
+  on('session.compact', async ($, e, next) => {
+    if (e.trigger !== 'precompute') await endCountdown($, settings, state, 'compact').catch(() => {})
+    return next(e)
+  })
+
+  // Typing ends a countdown with the button; the other two hand over with the draft, which stays in the prompt. Only the mod's own state
+  // changes, and the edit lands as it would without the mod. The button shows unless a survey holds the band.
+  on('prompt.edit', async ($, e, next) => {
+    const countdown = state.countdown
+    if (countdown?.kind === 'button' && typed(e, !countdown.survey)) await endCountdown($, settings, state, 'edit').catch(() => {})
+    return next(e)
+  })
+
+  // The band above the prompt, while a countdown runs: drawn from the countdown alone, so drawing waits on nothing and changes nothing but
+  // whether a survey holds the band, which only the drawing sees. A survey has the band while it shows. The first draw measured gave
+  // `hasSurvey` as undefined (docs/host-behaviour.md, Commands): that is no survey.
+  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => {
+    const countdown = state.countdown
+    if (countdown === undefined) return next(e)
+    const survey = e.props.hasSurvey === true
+    surveyed(countdownIo($, state), state, survey)
+    if (survey) return next(e)
+    const { Box, Text, Button } = $.ui.resolve(e)
+    const band = bandOf(countdown, e.props.bodyColumns)
+    return (
+      <Box>
+        <Text>{band.text}</Text>
+        {band.button === undefined ? null : (
+          <Button key={NOT_NOW_BUTTON} label={band.button} hotkey={NOT_NOW_KEY} plain onPress={() => void notNow($, settings, state)} />
+        )}
+      </Box>
+    )
   })
 
   on('turn.complete', async ($, e, next) => {

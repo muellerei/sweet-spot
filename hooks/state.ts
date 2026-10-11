@@ -2,6 +2,7 @@
 // hot reload) starts from nothing, and what must survive a reload does not belong here.
 
 import type { CompactCheck } from './compact-check'
+import type { Countdown } from './countdown'
 import type { Attempt, Later } from './decide'
 import type { LevelMemo } from './log'
 import { freshPairing, type Pairing } from './pairing'
@@ -54,6 +55,12 @@ export type State = LevelMemo & {
   // Whether the last compact was enough, found out at the first tool call or pause after it (`compact-check.ts`). Not kept across a reload, like the rest: at worst
   // one compact more follows.
   compactCheck: CompactCheck
+  // The countdown before an automatic handover, while it runs. A reload drops it, and with it the handover it would have started.
+  countdown: Countdown | undefined
+  // The pauses past the threshold where no handover began, a draft waited or the countdown begun there ended without one, and the context
+  // at the first of them. Two give a countdown that typing does not stop. Typing does not end it: only a handover that began, a later
+  // handover asked for (the command or Not now) and a context that shrank below `from`.
+  deferred: { pauses: number; from: number } | undefined
 }
 
 export const freshState = (): State => ({
@@ -71,6 +78,8 @@ export const freshState = (): State => ({
   answerRunning: false,
   afterHandoff: undefined,
   compactCheck: undefined,
+  countdown: undefined,
+  deferred: undefined,
   logLevel: 'off',
   badLogLevel: undefined,
 })

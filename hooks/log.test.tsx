@@ -9,6 +9,7 @@ import {
   endTurn,
   FILE,
   modelForkAnswer,
+  pauseAt,
   hostWith,
   LIVE,
   MINUTE,
@@ -717,12 +718,6 @@ for (const [name, host, answer] of scenarios) {
 // `/sweet-spot later`: what it made of the command at debug, the value a pause judges at in the pause line. Never what was typed.
 const LATER_DRY = { options: { dry_run: true, min_gap_minutes: 0, min_gap_turns: 0 } }
 const laterLines = (logs: string[]) => lines(diagnostic(logs)).filter(l => l.includes('later') || l.startsWith('info: pause:'))
-const pauseAt = async ($: TestEngine, world: ReturnType<typeof sessionWith>, tokens: number) => {
-  world.tokens = tokens
-  await startTurn($)
-  await endTurn($, 'answer')
-  await stop($)
-}
 const laterAt = async ($: TestEngine, world: ReturnType<typeof sessionWith>, tokens: number, args: string) => {
   world.tokens = tokens
   await runRelay($, args)

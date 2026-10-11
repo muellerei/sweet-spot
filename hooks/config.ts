@@ -50,7 +50,7 @@ const show = (raw: unknown): string => (typeof raw === 'number' ? String(raw) : 
 
 type Checked<T> = { value: T } | { error: string }
 
-const finiteAtLeast = (raw: unknown, min: number, whole: boolean, why = '', max = Number.POSITIVE_INFINITY): Checked<number> => {
+const finiteAtLeast = (raw: unknown, min: number, whole: boolean, { why = '', max = Number.POSITIVE_INFINITY } = {}): Checked<number> => {
   if (typeof raw !== 'number') return { error: `${show(raw)} is not a number` }
   if (!Number.isFinite(raw)) return { error: `${show(raw)} is not a finite number` }
   if (raw < min) return { error: `${show(raw)} is below ${min}${why}` }
@@ -89,12 +89,16 @@ export const configOf = (options: Record<string, unknown>): ConfigResult => {
     return checked.value
   }
   const config: Config = {
-    threshold: take('threshold', DEFAULTS.threshold, raw => finiteAtLeast(raw, MIN_THRESHOLD, false, ', a handoff that close to the start would repeat')),
+    threshold: take('threshold', DEFAULTS.threshold, raw =>
+      finiteAtLeast(raw, MIN_THRESHOLD, false, { why: ', a handoff that close to the start would repeat' }),
+    ),
     dryRun: take('dry_run', DEFAULTS.dryRun, flag),
     minGapMinutes: take('min_gap_minutes', DEFAULTS.minGapMinutes, raw => finiteAtLeast(raw, 0, false)),
     minGapTurns: take('min_gap_turns', DEFAULTS.minGapTurns, raw => finiteAtLeast(raw, 0, true)),
     laterTokens: take('later_tokens', DEFAULTS.laterTokens, raw => finiteAtLeast(raw, 1, true)),
-    countdownSeconds: take('countdown_seconds', DEFAULTS.countdownSeconds, raw => finiteAtLeast(raw, COUNTDOWN_SECONDS.min, true, '', COUNTDOWN_SECONDS.max)),
+    countdownSeconds: take('countdown_seconds', DEFAULTS.countdownSeconds, raw =>
+      finiteAtLeast(raw, COUNTDOWN_SECONDS.min, true, { max: COUNTDOWN_SECONDS.max }),
+    ),
     handoffMethod: take('handoff_method', DEFAULTS.handoffMethod, oneOf(METHODS)),
     handoffFallback: take('handoff_fallback', DEFAULTS.handoffFallback, oneOf([...METHODS, 'none'] as const)),
     handoffCommand: take('handoff_command', DEFAULTS.handoffCommand, commandName),

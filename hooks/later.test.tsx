@@ -8,6 +8,7 @@ import {
   hostWith,
   LIVE,
   pause,
+  pauseAt,
   raiseHandoff,
   reachThreshold,
   runRelay,
@@ -29,13 +30,6 @@ const NO_GAP_LIVE = { options: { ...LIVE.options, min_gap_minutes: 0, min_gap_tu
 
 const wouldHandOver = (tokens: number) => `dry run, would hand over now, context ${tokens} tokens`
 const accepted = (at: number, context: number) => `hands over at ${at} tokens instead of 200000, for this handover only, context ${context} tokens`
-
-// An answer ends at this context size: a pause.
-const pauseAt = async ($: TestEngine, world: SessionWorld, tokens: number | undefined) => {
-  world.tokens = tokens
-  await startTurn($)
-  await pause($)
-}
 
 const later = async ($: TestEngine, world: SessionWorld, tokens: number, args: string) => {
   world.tokens = tokens
