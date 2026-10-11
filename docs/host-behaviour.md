@@ -68,6 +68,10 @@ Open).
 - **A reload during a handoff ends it without a word.** _Seen 2026-10-08 in the logs of a live session, version not recorded; what
   caused that reload is open._ A handoff cut off this way leaves the session as it was; the next pause past the threshold tries again,
   since the reload also cleared the minimum gap.
+- **A reload during a countdown ends it without a handover.** _Measured 2026-10-11, Claude Code 2.1.296; a dry run with a 60 s
+  countdown at 149361 tokens, a mod option changed in `settings.json` 20 s in. The host said the options changed and reloaded the mod,
+  the band went away, and nothing followed the deadline: no "would hand over now", no line of the countdown ending._ The old module's
+  timers go with it, and the new one starts without the countdown; the next pause past the threshold counts down again.
 - **`/reload-plugins` does not call `register` again while the mod has not changed.** _Measured 2026-10-10, Claude Code 2.1.296; same
   timestamp before and after._ A value a mod reads once per load stays until Claude Code restarts; sweet-spot reads its log level at
   the start of every handler for this reason.
@@ -248,8 +252,6 @@ throwaway mod for the veto. Interactive runs through tmux, from the veto on thro
 - Whether the host puts the name in front of the lines that answer typing during a handoff, which carry it themselves.
 - Whether `/reload-plugins` loads a changed mod and calls `register` again.
 - What can reload the mod in a session nobody is watching.
-- Whether a reload during a countdown ends it without a handover. It is expected to, since the reload drops the mod's state and the
-  old module with its timers; not tried.
 - Whether a compact raises `session.end`. `SessionEndReason` in the types has no compact and the session id stays, so the countdown
   ends on `session.compact` itself; measured is only that a compact raises no `turn.start` and no stop.
 - A survey coming up in the band while a countdown runs: the drawing reports `hasSurvey`, but no survey appeared in the runs.
