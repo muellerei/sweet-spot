@@ -8,6 +8,10 @@ export type Attempt = { at: number; turns: number }
 // capped: the cap comes from the window, which can change before the pause that judges it.
 export type Later = { from: number; until: number }
 
+// A handover asked for with `/sweet-spot asap`, at a context of `from`: it lifts the threshold and the minimum gap for the next handover, and
+// nothing else. Work that is running still holds it back, below the emergency brake.
+export type Asap = { from: number }
+
 export type Snapshot = {
   // Input side of the last answer; undefined in a fresh session and after /clear.
   tokens: number | undefined
@@ -19,6 +23,7 @@ export type Snapshot = {
   turns: number
   lastAttempt: Attempt | undefined
   later: Later | undefined
+  asap: Asap | undefined
 }
 
 // Work that is still running and reports back to the session. A handoff written now cannot hold its result, and the result would come
@@ -81,9 +86,9 @@ export const oneShots = (crons: readonly { recurring: boolean }[] | undefined): 
 export const decide = (snapshot: Snapshot, config: Config): Decision => {
   const { tokens, window } = snapshot
   const threshold = effectiveThreshold(config.threshold, window)
-  if (tokens === undefined || tokens < thresholdInForce(config.threshold, window, snapshot.later)) return { kind: 'none' }
+  if (tokens === undefined || (snapshot.asap === undefined && tokens < thresholdInForce(config.threshold, window, snapshot.later))) return { kind: 'none' }
   const busy = busyReason(snapshot)
   if (busy !== undefined && tokens < brakeOf(threshold, window)) return { kind: 'defer', reason: busy, tokens }
-  if (withinGap(snapshot, config)) return { kind: 'defer', reason: 'min-gap', tokens }
+  if (snapshot.asap === undefined && withinGap(snapshot, config)) return { kind: 'defer', reason: 'min-gap', tokens }
   return { kind: config.dryRun ? 'dry-run' : 'act', tokens, ...(busy === undefined ? {} : { forced: busy }) }
 }

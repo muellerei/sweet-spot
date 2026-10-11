@@ -14,6 +14,12 @@ running (background tasks, one-shot timers), and `turn.complete` says how the tu
 pure: the caller takes the snapshot, acts on the answer and keeps the record of the last attempt (`atPause` in `register.tsx`).
 `/sweet-spot later` moves the next handover back: `later.ts` makes the answer and the value from the context the command reads, and
 `decide` then judges at `thresholdInForce` instead of the threshold, until that handover is spent or the context shrinks (`laterAt`).
+`/sweet-spot asap` sets a mark (`Asap` in `decide.ts`, `asapFor` in `asap.ts`): with it `decide` skips the threshold and the minimum gap, and
+the pause starts no countdown. Running work still postpones it below the emergency brake. The handover that begins spends it (`spendMarks` in `register.tsx`).
+Typed with no answer running there is no pause, so the command judges itself (`asapAtRest`): from what the last stop reported (`lastStop` in
+`state.ts`, dropped when a turn starts, so after an Esc what runs is not known and the mark waits for the next pause) and the subagents it lists
+now. The handover begins in a step of its own, `ASAP_STEP_MS` after the answer, because the host refuses a compact, a `/clear` and a user
+command inside the command itself; the step judges again, and a turn, a subagent or a second `asap` in between stops it or is turned down.
 
 **The countdown.** Where `decide` says to hand over, `atPause` asks `countdownBegun` first. With `countdown_seconds` at 0 or no first
 way it hands over at once, as before there was a countdown. Otherwise `kindAt` in `countdown.ts` picks the kind from the context, a

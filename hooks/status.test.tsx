@@ -33,7 +33,7 @@ modTest('status says the context against the window, where the handover comes an
 })
 
 const USAGE =
-  'use `/sweet-spot status` to see where the context stands, `/sweet-spot later [tokens]` to move the next handover back, or `/sweet-spot redeliver` to submit again the handoff that did not reach the fresh session'
+  'use `/sweet-spot status` to see where the context stands, `/sweet-spot later [tokens]` to move the next handover back, `/sweet-spot asap` to hand over at the next pause, or `/sweet-spot redeliver` to submit again the handoff that did not reach the fresh session'
 
 for (const args of ['status 50k', 'STATUS', 'Status', 'statusx', 'status  later']) {
   modTest(`"${args}" is no status: the command tells what it does`, LIVE, async ($, on) => {

@@ -1,6 +1,7 @@
 import type { EngineInterface as Engine, Register } from 'claude-code'
 
 import { configOf, type Config, type ConfigResult } from './config'
+import { ASAP_OVER, RUNNING_UNKNOWN, asapFor } from './asap'
 import { activeTasks, brakeFor, brakeOf, decide, effectiveThreshold, laterAt, oneShots, shrunk, thresholdInForce, type Decision, type Snapshot } from './decide'
 import { hold } from './hold'
 import { LATER_OVER, laterFor, tokensOf } from './later'
@@ -128,8 +129,9 @@ const registerCommand = async ($: Engine, state: State) => {
     // (docs/host-behaviour.md, Commands).
     await $.command.register({
       name: COMMAND,
-      description: 'Show where the context stands, move the next handover back, or submit again the handoff that did not reach the fresh session',
-      argumentHint: 'status | later [tokens] | redeliver',
+      description:
+        'Show where the context stands, move the next handover back, hand over at the next pause, or submit again the handoff that did not reach the fresh session',
+      argumentHint: 'status | later [tokens] | asap | redeliver',
       immediate: true,
     })
   } catch (err) {
@@ -185,33 +187,54 @@ const redeliverText = ($: Engine, config: Config | undefined, args: string, stat
   return REDELIVERING
 }
 
-const turnedDown = (text: string, why: string): Answer => ({ text, lines: [['debug', `later: turned down, ${why}`]] })
+const turnedDown = (text: string, why: string, verb = 'later'): Answer => ({ text, lines: [['debug', `${verb}: turned down, ${why}`]] })
+
+// What a command that acts on the context needs before it does: settings it can trust, no handover under way (nor, for `asap`, a step of
+// its own still to come), and the context size, read at that moment. Otherwise the answer that turns it down. The command answers whatever
+// goes wrong with the read; the hook's `.catch` would only pass the error to the host.
+const contextFor = async (
+  $: Engine,
+  settings: ConfigResult,
+  state: State,
+  verb: 'later' | 'asap',
+): Promise<{ config: Config; tokens: number; window: number } | Answer> => {
+  if (!settings.ok) return turnedDown(offLine(settings.errors), 'the settings are rejected', verb)
+  const underWay = () => state.handingOver || (verb === 'asap' && state.asapScheduled)
+  if (underWay()) return turnedDown(HANDOFF_UNDER_WAY, 'a handover is in progress', verb)
+  let context: { tokens?: number; window: number }
+  try {
+    context = (await $.session.usage()).context
+  } catch (err) {
+    return { text: contextUnreadLine(why(err)), lines: [['warn', `${verb}: could not read the context size`]] }
+  }
+  // A pause may have started a handover during the read: a later handover or a mark set beside it would come too late for it and hold on in
+  // the fresh session.
+  if (state.handingOver) return turnedDown(HANDOFF_UNDER_WAY, 'a handover is in progress', verb)
+  if (context.tokens === undefined) return turnedDown(CONTEXT_UNKNOWN, 'the context size is unknown', verb)
+  return { config: settings.config, tokens: context.tokens, window: context.window }
+}
 
 // Moves the next handover back. It needs the context at the time it is typed, so its answer waits for that read.
 const laterText = async ($: Engine, settings: ConfigResult, rest: string, state: State): Promise<Answer> => {
   const asked = tokensOf(rest)
   if ('error' in asked) return turnedDown(asked.error, 'not a number of tokens')
-  if (!settings.ok) return turnedDown(offLine(settings.errors), 'the settings are rejected')
-  if (state.handingOver) return turnedDown(HANDOFF_UNDER_WAY, 'a handover is in progress')
-  // The command answers whatever goes wrong with the read; the hook's `.catch` would only pass the error to the host.
-  let context: { tokens?: number; window: number }
-  try {
-    context = (await $.session.usage()).context
-  } catch (err) {
-    return { text: contextUnreadLine(why(err)), lines: [['warn', 'later: could not read the context size']] }
-  }
-  // A pause may have started a handover during the read: a later handover set beside it would come too late for it and hold on in the
-  // fresh session.
-  if (state.handingOver) return turnedDown(HANDOFF_UNDER_WAY, 'a handover is in progress')
-  if (context.tokens === undefined) return turnedDown(CONTEXT_UNKNOWN, 'the context size is unknown')
-  const config = settings.config
-  const before = laterAt(state.later, context.tokens)
-  const result = laterFor(config, context.window, context.tokens, state.later, asked.tokens === 'setting' ? config.laterTokens : asked.tokens)
+  const ready = await contextFor($, settings, state, 'later')
+  if ('text' in ready) return ready
+  const { config, tokens, window } = ready
+  const before = laterAt(state.later, tokens)
+  const result = laterFor(config, window, tokens, state.later, asked.tokens === 'setting' ? config.laterTokens : asked.tokens)
   state.later = result.later
+  // The last word counts: `later` after `asap` takes the mark back, whether `later` itself was turned down or not.
+  const withdrawn = state.asap !== undefined
+  state.asap = undefined
+  // A step of `asap` still to come finds no mark and does nothing; a new `asap` before it must not be turned down for it.
+  state.asapScheduled = false
   // Moving the handover back is the person's answer, not a pause that dodged it: the deferred pauses start over. A later turned down moves
   // nothing and leaves them.
   if (result.later !== before) state.deferred = undefined
-  return { text: result.text, lines: result.lines.map(line => ['debug', line]) }
+  const lines: Answer['lines'] = result.lines.map(line => ['debug', line])
+  if (withdrawn) lines.unshift(['debug', 'asap: withdrawn by later'])
+  return { text: withdrawn ? `asap withdrawn, ${result.text}` : result.text, lines }
 }
 
 const verbOf = (args: string) => args.trim().split(/\s/, 1)[0]
@@ -238,12 +261,99 @@ const statusText = async ($: Engine, settings: ConfigResult, state: State): Prom
   }
 }
 
+// Hands over at the next pause, wherever the context stands. It needs the context at the time it is typed, so its answer waits for that read.
+const asapText = async ($: Engine, settings: ConfigResult, state: State): Promise<Answer> => {
+  const ready = await contextFor($, settings, state, 'asap')
+  if ('text' in ready) return ready
+  const { config, tokens, window } = ready
+  const result = asapFor(config, tokens)
+  state.asap = result.asap
+  // The last word counts: `asap` after `later` drops the later handover.
+  const dropped = state.later !== undefined
+  state.later = undefined
+  const lines: NonNullable<Answer['lines']> = result.lines.map(line => ['debug', line])
+  if (dropped) lines.unshift(['debug', 'later: dropped by asap'])
+  const prefix = dropped ? 'later dropped, ' : ''
+  // An answer that runs ends in a pause, and that pause judges. At rest no pause comes.
+  if (state.answerRunning) return { text: prefix + result.text, lines }
+  const rest = await asapAtRest($, config, state, tokens, window, result.text)
+  if (rest === undefined) return { text: prefix + result.text, lines }
+  return { text: prefix + rest, lines: [...lines, ['debug', 'asap: judged at rest']] }
+}
+
+// What the last stop said plus what runs now, as a pause would read them, for `asap` typed at rest.
+const restSnapshot = async ($: Engine, state: State, tokens: number, window: number): Promise<Snapshot | undefined> => {
+  const stop = state.lastStop
+  if (stop === undefined) return undefined
+  const [agents, turns, now] = await Promise.all([$.agent.list(), $.session.turns(), $.clock.now()])
+  // `later` is gone: `asapText` dropped it before this reads.
+  return { ...snapshotOf(stop, { tokens, window }, agents, turns, state), now, later: undefined }
+}
+
+// The step that starts the handover of `asap` at rest comes this long after the command's answer: the host refuses a compact, a /clear and a
+// user command inside the command itself (docs/host-behaviour.md, Commands).
+const ASAP_STEP_MS = 300
+
+// `asap` typed with no answer running: no stop and no pause will judge, so the command does. It judges as a pause does, and the handover that
+// follows begins in a step of its own. Not known what runs (no stop seen since the last turn started): the mark stays for the next pause.
+// The text it answers with, or `undefined` for the answer of the mark alone.
+const asapAtRest = async ($: Engine, config: Config, state: State, tokens: number, window: number, text: string): Promise<string | undefined> => {
+  let snapshot: Snapshot | undefined
+  try {
+    snapshot = await restSnapshot($, state, tokens, window)
+  } catch (err) {
+    // Not known what runs, as with no stop seen: the mark stays for the next pause, which reads it again.
+    logTo($, state)('warn', 'asap: could not read what runs')
+    return `${text}, ${RUNNING_UNKNOWN}`
+  }
+  // A turn or a handover may have started during the reads: the mark waits for its pause.
+  if (state.answerRunning || state.handingOver) return undefined
+  if (snapshot === undefined) return `${text}, ${RUNNING_UNKNOWN}`
+  const decision = decide(snapshot, config)
+  if (decision.kind === 'none') return undefined
+  if (decision.kind === 'defer') return reported(decision, config, state)
+  // The answer says it; a toast would say it twice.
+  if (decision.kind === 'dry-run') {
+    spendMarks($, state, snapshot.now, snapshot.turns)
+    return reported(decision, config, state)
+  }
+  state.asapScheduled = true
+  $.clock.after(ASAP_STEP_MS, () => void asapStep($, config, state))
+  return reported(decision, config, state)
+}
+
+// The step: it judges again with a fresh snapshot, and begins only if the judgment is still to hand over. Otherwise the mark stays and the
+// next pause judges.
+const asapStep = async ($: Engine, config: Config, state: State) => {
+  state.asapScheduled = false
+  try {
+    if (state.asap === undefined) return
+    const { tokens, window } = (await $.session.usage()).context
+    if (tokens === undefined) return
+    const snapshot = await restSnapshot($, state, tokens, window)
+    if (snapshot === undefined || state.asap === undefined || state.answerRunning || state.handingOver) return
+    const decision = decide(snapshot, config)
+    if (decision.kind === 'defer') sayOnce($, state, decision.reason, reported(decision, config, state))
+    // The command's answer has said it is handing over; saying it again would double the line.
+    else if (decision.kind !== 'none') beginHandover($, decision, config, state, snapshot.now, snapshot.turns, false)
+  } catch (err) {
+    sayUnread($, state, err)
+  }
+}
+
+// A failed read is said once; the log carries the warning the first time only.
+const sayUnread = ($: Engine, state: State, err: unknown) => {
+  const line = unreadLine(why(err))
+  if (sayOnce($, state, line, line)) logTo($, state)('warn', 'could not check for a handoff')
+}
+
 // What the command does is the word after it. `later` takes an argument, so the rest is its argument; `status` and `redeliver` take none.
 const commandText = ($: Engine, settings: ConfigResult, args: string, state: State): Promise<Answer> | Answer => {
   const words = args.trim()
   const verb = verbOf(words)
   if (verb === 'later') return laterText($, settings, words.slice(verb.length), state)
   if (words === 'status') return statusText($, settings, state)
+  if (words === 'asap') return asapText($, settings, state)
   return { text: redeliverText($, settings.ok ? settings.config : undefined, args, state) }
 }
 
@@ -287,10 +397,10 @@ const sayOnce = ($: Engine, state: State, key: string, text: string): boolean =>
 
 // `act` comes only with the dry run off. It starts the handoff after the stop has returned: the stop is a hook the turn waits on, and the
 // command is a turn of its own that would wait on this one.
-const handOver = ($: Engine, decision: Extract<Decision, { kind: 'act' }>, config: Config, state: State) => {
+const handOver = ($: Engine, decision: Extract<Decision, { kind: 'act' }>, config: Config, state: State, announce = true) => {
   // Without a first way (a compact that was not enough, and no fallback) there is nothing to announce: the run fails at the mark.
   const first = firstMethod(config, state)
-  if (first !== undefined) say($, reportOf(decision, first))
+  if (announce && first !== undefined) say($, reportOf(decision, first))
   state.handingOver = true
   state.held = []
   $.clock.after(0, () => void handoff($, config, state, decision.tokens))
@@ -320,10 +430,15 @@ const AFTER_HANDOFF_PAUSES = 3
 const limitsOf = (limits: readonly { kind: string; percentUsed: number }[]): string =>
   limits.length === 0 ? '' : `, limits ${limits.map(l => `${l.kind} ${l.percentUsed}%`).join(', ')}`
 
+const outstandingOf = (e: Stop): NonNullable<State['lastStop']> => ({
+  backgroundTasks: activeTasks(e.background_tasks),
+  oneShotTimers: oneShots(e.session_crons),
+})
+
 // What a pause judges, but the clock, built the same way for the pause and for the end of a countdown. `later` is checked against the
 // context: the pause has already ended it in the state, the end of a countdown only reads it.
 const snapshotOf = (
-  e: Stop,
+  seen: NonNullable<State['lastStop']>,
   context: { tokens?: number; window: number },
   agents: readonly { status: string }[],
   turns: number,
@@ -331,17 +446,42 @@ const snapshotOf = (
 ): Omit<Snapshot, 'now'> => ({
   tokens: context.tokens,
   window: context.window,
-  backgroundTasks: activeTasks(e.background_tasks),
-  oneShotTimers: oneShots(e.session_crons),
+  ...seen,
   subagents: agents.filter(a => a.status === 'running').length,
   turns,
   lastAttempt: state.lastAttempt,
   later: laterAt(state.later, context.tokens),
+  asap: state.asap,
 })
 
 // The line for a decision names the way tried first; with none known (a compact that was not enough, and no fallback), the setting's way.
 const reported = (decision: Exclude<Decision, { kind: 'none' }>, config: Config, state: State): string =>
   reportOf(decision, firstMethod(config, state) ?? config.handoffMethod)
+
+// Carried out at the pause, when the countdown runs out with a judgment of its own, or by `asap` at rest: only then is it an attempt and are
+// `later` and the mark spent. A countdown that ends without a handover leaves both as they were.
+const spendMarks = ($: Engine, state: State, at: number, atTurns: number) => {
+  const log = logTo($, state)
+  // A dry run counts as an attempt too: it shows the pace the real run would keep.
+  state.said = undefined
+  state.lastAttempt = { at, turns: atTurns }
+  // `later` held for this handover, whether it goes through or not: the next one comes at the threshold.
+  if (state.later !== undefined) log('debug', 'later: spent by this handover')
+  state.later = undefined
+  // `asap` is spent by the same handover.
+  if (state.asap !== undefined) log('debug', 'asap: spent by this handover')
+  state.asap = undefined
+  // A handover that began, whether it goes through or not, ends the deferred pauses.
+  state.deferred = undefined
+}
+
+const beginHandover = ($: Engine, judged: Countdown['decision'], config: Config, state: State, at: number, atTurns: number, announce = true) => {
+  // A second source of a handover (a countdown that was still being set up when `asap` began one at rest) finds it under way.
+  if (state.handingOver) return logTo($, state)('debug', 'handover: already under way')
+  spendMarks($, state, at, atTurns)
+  if (judged.kind === 'act') handOver($, judged, config, state, announce)
+  else say($, reported(judged, config, state))
+}
 
 const atPause = async ($: Engine, e: Stop, config: Config, state: State) => {
   const [{ context, rateLimits }, agents, turns, now] = await Promise.all([$.session.usage(), $.agent.list(), $.session.turns(), $.clock.now()])
@@ -349,13 +489,18 @@ const atPause = async ($: Engine, e: Stop, config: Config, state: State) => {
   const kept = laterAt(state.later, context.tokens)
   const over = state.later !== undefined && kept === undefined
   state.later = kept
+  // The mark ends the same way.
+  const asapKept = shrunk(state.asap, context.tokens)
+  const asapOver = state.asap !== undefined && asapKept === undefined
+  state.asap = asapKept
   // The deferred pauses end the same way.
   const deferred = shrunk(state.deferred, context.tokens)
   const deferredOver = state.deferred !== undefined && deferred === undefined
   state.deferred = deferred
-  const snapshot = { ...snapshotOf(e, context, agents, turns, state), now }
+  const snapshot = { ...snapshotOf(outstandingOf(e), context, agents, turns, state), now }
   const log = logTo($, state)
   if (over) log('debug', LATER_OVER)
+  if (asapOver) log('debug', ASAP_OVER)
   if (deferredOver) log('debug', 'countdown: deferred pauses over, the context shrank')
   const fresh = state.afterHandoff
   if (fresh !== undefined && fresh.pauses < AFTER_HANDOFF_PAUSES && snapshot.tokens !== undefined && snapshot.tokens < fresh.before) {
@@ -372,7 +517,7 @@ const atPause = async ($: Engine, e: Stop, config: Config, state: State) => {
   const decision = decide(snapshot, config)
   log(
     'info',
-    `pause: context ${snapshot.tokens} of ${snapshot.window} tokens (threshold ${threshold}${state.later === undefined ? '' : `, later ${thresholdInForce(config.threshold, snapshot.window, state.later)}`}, brake ${brakeOf(threshold, snapshot.window)}), ${snapshot.backgroundTasks} background tasks, ${snapshot.oneShotTimers} timers, ${snapshot.subagents} subagents, turn ${turns}, ${state.lastAttempt === undefined ? 'no attempt before' : `last attempt at turn ${state.lastAttempt.turns}`}${limitsOf(rateLimits)}, ${decidedOf(decision)}${'forced' in decision && decision.forced !== undefined ? `, forced past the brake by ${decision.forced}` : ''}`,
+    `pause: context ${snapshot.tokens} of ${snapshot.window} tokens (threshold ${threshold}${state.later === undefined ? '' : `, later ${thresholdInForce(config.threshold, snapshot.window, state.later)}`}${state.asap === undefined ? '' : ', asap'}, brake ${brakeOf(threshold, snapshot.window)}), ${snapshot.backgroundTasks} background tasks, ${snapshot.oneShotTimers} timers, ${snapshot.subagents} subagents, turn ${turns}, ${state.lastAttempt === undefined ? 'no attempt before' : `last attempt at turn ${state.lastAttempt.turns}`}${limitsOf(rateLimits)}, ${decidedOf(decision)}${'forced' in decision && decision.forced !== undefined ? `, forced past the brake by ${decision.forced}` : ''}`,
   )
   if (decision.kind === 'none') {
     state.said = undefined
@@ -384,21 +529,11 @@ const atPause = async ($: Engine, e: Stop, config: Config, state: State) => {
   }
   // Carried out at the pause, or when the countdown runs out with a judgment of its own: only then is it an attempt and is `later` spent. A
   // countdown that ends without a handover leaves both as they were.
-  const carry = (judged: Countdown['decision'], at: number, atTurns: number) => {
-    // A dry run counts as an attempt too: it shows the pace the real run would keep.
-    state.said = undefined
-    state.lastAttempt = { at, turns: atTurns }
-    // `later` held for this handover, whether it goes through or not: the next one comes at the threshold.
-    if (state.later !== undefined) log('debug', 'later: spent by this handover')
-    state.later = undefined
-    // A handover that began, whether it goes through or not, ends the deferred pauses.
-    state.deferred = undefined
-    if (judged.kind === 'act') handOver($, judged, config, state)
-    else say($, reported(judged, config, state))
-  }
+  const carry = (judged: Countdown['decision'], at: number, atTurns: number) => beginHandover($, judged, config, state, at, atTurns)
   const postpone = (judged: Extract<Decision, { kind: 'defer' }>) => void sayOnce($, state, judged.reason, reported(judged, config, state))
   const expiry: Expiry = { look: () => lookAgain($, e, state), judge: s => decide(s, config), carry, postpone }
-  if (await countdownBegun($, decision, config, state, snapshot, expiry)) return
+  // `asap` was asked for by the person: there is no countdown to say it again.
+  if (snapshot.asap === undefined && (await countdownBegun($, decision, config, state, snapshot, expiry))) return
   carry(decision, now, turns)
 }
 
@@ -406,7 +541,7 @@ const atPause = async ($: Engine, e: Stop, config: Config, state: State) => {
 // cannot be read, and they change only in a turn, which ends the countdown.
 const lookAgain = async ($: Engine, e: Stop, state: State): Promise<Omit<Snapshot, 'now'>> => {
   const [{ context }, agents, turns] = await Promise.all([$.session.usage(), $.agent.list(), $.session.turns()])
-  return snapshotOf(e, context, agents, turns, state)
+  return snapshotOf(outstandingOf(e), context, agents, turns, state)
 }
 
 // A countdown before the handover, where one is set and the first way is known; without a first way the pause goes on as before and
@@ -439,6 +574,14 @@ const endCountdown = async ($: Engine, settings: ConfigResult, state: State, rea
   logTo($, state)('debug', endedLine(reason))
 }
 
+// Ends the mark for what happened to the session, at once; the line comes after its read of the log level. Like the countdown it only watches.
+const endAsap = async ($: Engine, settings: ConfigResult, state: State, why: string) => {
+  if (state.asap === undefined) return
+  state.asap = undefined
+  await readLevel($, settings, state)
+  logTo($, state)('debug', `asap: ended, ${why}`)
+}
+
 // "Not now" moves the handover back as the command `later` with no number does, and answers the same way.
 const notNow = async ($: Engine, settings: ConfigResult, state: State) => {
   const lines = await press(countdownIo($, state), state, () => laterText($, settings, '', state))
@@ -452,8 +595,7 @@ const atPauseOrSay = async ($: Engine, e: Stop, config: Config, state: State) =>
   try {
     await atPause($, e, config, state)
   } catch (err) {
-    const line = unreadLine(why(err))
-    if (sayOnce($, state, line, line)) logTo($, state)('warn', 'could not check for a handoff')
+    sayUnread($, state, err)
   }
 }
 
@@ -490,7 +632,8 @@ export const register: Register = (on, options) => {
   on('command.run', { command: COMMAND }, async ($, e) => {
     // `later` ends a countdown before it moves the handover back. Typed, its first character has already ended it; a command raises no
     // submit, and from the history it is expected to come with no edit either (docs/host-behaviour.md, Commands). `redeliver` leaves it running.
-    const ended = verbOf(e.args) === 'later' && end(countdownIo($, state), state)
+    const verb = verbOf(e.args)
+    const ended = (verb === 'later' || verb === 'asap') && end(countdownIo($, state), state)
     const { text, lines = [] } = await commandText($, settings, e.args, state)
     await readLevel($, settings, state)
     const log = logTo($, state)
@@ -504,6 +647,7 @@ export const register: Register = (on, options) => {
     turnStarted(state.pairing)
     // Only a mod with settings it can trust sees the end of the answer (`turn.complete` is past the gate below), so only it marks one running.
     if (config !== undefined) state.answerRunning = true
+    state.lastStop = undefined
     const awaited = state.turnWait !== undefined
     const own = startOfTurn(state, e.turnId)
     // A turn is work, whoever started it (a finished background task starts one too): no handover in the middle of it.
@@ -557,6 +701,9 @@ export const register: Register = (on, options) => {
   // The end of the session (exit, /clear, a resume) ends a countdown: a /clear can come with no edit, submit or turn, from the history.
   on('session.end', async ($, e, next) => {
     await endCountdown($, settings, state, 'session').catch(() => {})
+    await endAsap($, settings, state, 'the session ended').catch(() => {})
+    state.lastStop = undefined
+    state.asapScheduled = false
     return next(e)
   })
 
@@ -565,7 +712,11 @@ export const register: Register = (on, options) => {
   // compact comes after its countdown ran out, and meets none.
   on('session.compact', async ($, e, next) => {
     if (e.trigger !== 'precompute') await endCountdown($, settings, state, 'compact').catch(() => {})
-    return next(e)
+    const result = await next(e)
+    // After a compact the context is unknown at first, and nothing would end the mark; a compact the host refused leaves it standing. A
+    // subagent's compact of its own transcript (`agentId`) leaves the main conversation as it was.
+    if (e.trigger !== 'precompute' && e.agentId === undefined && !('skip' in result)) await endAsap($, settings, state, 'a compact').catch(() => {})
+    return result
   })
 
   // Typing ends a countdown with the button; the other two hand over with the draft, which stays in the prompt. Only the mod's own state
@@ -624,6 +775,8 @@ export const register: Register = (on, options) => {
       log('debug', `stop of agent ${e.agent_id}, not a pause`)
       return next(e)
     }
+    // What runs besides the answer, as this stop reports it: `asap` at rest judges from it until the next turn starts.
+    state.lastStop = outstandingOf(e)
     const out = await next(e)
     // Another hook that asks the session to go on has the last word: it is no pause. Nor is the end of the handoff command's own turn.
     const blocked = out.block !== undefined
