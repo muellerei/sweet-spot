@@ -190,6 +190,7 @@ const quiet: Snapshot = {
   turns: 100,
   lastAttempt: undefined,
   later: undefined,
+  asap: undefined,
 }
 const live = { ...DEFAULTS, dryRun: false }
 const kind = (over: Partial<Snapshot>, config = live) => decide({ ...quiet, ...over }, config).kind
@@ -358,6 +359,16 @@ test('decide: the emergency brake does not lift the gap', async () => {
 
 test('decide: running work is named before the gap', async () => {
   expect(decide({ ...quiet, tokens: 250_000, subagents: 1, lastAttempt: attempt(1, 1) }, live)).toMatchObject({ reason: 'subagent' })
+})
+
+test('decide: asap hands over below the threshold and inside the gap, and waits for running work below the emergency brake', async () => {
+  const asap = { from: 100_000 }
+  expect(decide({ ...quiet, tokens: 100_000, asap }, live)).toEqual({ kind: 'act', tokens: 100_000 })
+  expect(decide({ ...quiet, tokens: 100_000, asap, lastAttempt: attempt(1, 1) }, live)).toEqual({ kind: 'act', tokens: 100_000 })
+  expect(decide({ ...quiet, tokens: 100_000, asap, subagents: 1 }, live)).toMatchObject({ kind: 'defer', reason: 'subagent' })
+  expect(decide({ ...quiet, tokens: 350_000, asap, subagents: 1 }, live)).toEqual({ kind: 'act', tokens: 350_000, forced: 'subagent' })
+  // No size, no judgment, with the mark as without it.
+  expect(decide({ ...quiet, tokens: undefined, asap }, live)).toEqual({ kind: 'none' })
 })
 
 test('decide: in dry-run mode a handoff is reported as one that would happen, with the size of the context, and the rest stays as it is', async () => {

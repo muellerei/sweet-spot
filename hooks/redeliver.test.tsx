@@ -35,7 +35,7 @@ import {
 const FIRST = firstMessage(NOTES)
 const NOTHING = 'nothing to redeliver'
 const USAGE =
-  'use `/sweet-spot status` to see where the context stands, `/sweet-spot later [tokens]` to move the next handover back, or `/sweet-spot redeliver` to submit again the handoff that did not reach the fresh session'
+  'use `/sweet-spot status` to see where the context stands, `/sweet-spot later [tokens]` to move the next handover back, `/sweet-spot asap` to hand over at the next pause, or `/sweet-spot redeliver` to submit again the handoff that did not reach the fresh session'
 const REDELIVERING = 'redelivering the handoff'
 
 modTest('the command is registered when a session starts, and not again at its first turn', async ($, on) => {
@@ -48,8 +48,9 @@ modTest('the command is registered when a session starts, and not again at its f
   expect(seen.menu).toEqual([
     {
       name: 'sweet-spot',
-      description: 'Show where the context stands, move the next handover back, or submit again the handoff that did not reach the fresh session',
-      argumentHint: 'status | later [tokens] | redeliver',
+      description:
+        'Show where the context stands, move the next handover back, hand over at the next pause, or submit again the handoff that did not reach the fresh session',
+      argumentHint: 'status | later [tokens] | asap | redeliver',
       immediate: true,
     },
   ])

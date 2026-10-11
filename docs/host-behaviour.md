@@ -152,6 +152,12 @@ Contents: [Events and their order](#events-and-their-order) · [`/clear` and the
   `$.clock.after`, all three ran: the compact resolved with the summary messages after about 12 s, `/clear` ended the session
   (`session.end`, reason `clear`) and returned `{ text: "" }`, and the skill command returned `{}` at once and started a turn. _Measured
   2026-10-11, Claude Code 2.1.296; the same mod, the commands typed at the prompt with no answer running._
+- **`$.model.fork` runs at rest, both from `$.clock.after` after an `immediate` command and inside the `command.run` hook.** Unlike the
+  compact, `/clear` and a user command, the host does not refuse it in the hook. With no answer running and a warm cache, the call from
+  `$.clock.after(300)` answered in 1.3 s and the one inside the hook in 2.7 s, both with `isAnswered: true`, the cache serving the whole
+  prefix (68942 of 68945 input tokens read, none written). A cold cache stayed unmeasured: the prefix was still cached after 7 minutes
+  without a call, so the entry lives longer than 5 minutes, and a model switch to empty it would change the saved default model.
+  _Measured 2026-10-11, Claude Code 2.1.296; a throwaway mod with an `immediate` command, in a session over `herdr` that had answered once._
 - **An `immediate` slash command raises `prompt.edit` and `command.run`, but not `prompt.submit`.** Sent from the history (arrow up) it
   is not measured; no `prompt.edit` is expected there, since history does not raise one. A mod that needs to notice such a command
   listens to `command.run`. _Measured 2026-10-11, Claude Code 2.1.296; the same mod, typed commands only._
@@ -281,7 +287,7 @@ For the countdown:
 ## Open
 
 - An API error, `error` or `refusal` in the handoff's own turn.
-- A `$.model.fork` call on a cold cache. At a pause the cache has always been warm.
+- A `$.model.fork` call on a cold cache (what it costs and how long it takes). At a pause the cache has always been warm; at rest it was still warm after 7 minutes.
 - How much a compact leaves at a high context (it was measured at about 65000 tokens).
 - Two handoffs at the same moment.
 - Whether the host puts the name in front of the lines that answer typing during a handoff, which carry it themselves.

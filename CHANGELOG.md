@@ -6,6 +6,7 @@ All notable changes to sweet-spot are listed here. The format follows [Keep a Ch
 
 ### Added
 
+- `/sweet-spot asap` hands over at the next pause, wherever the context stands: it lifts the threshold and the minimum gap, has no countdown, and is spent by the handover it starts. Work that is running still holds it back, until the emergency brake. Typed while no answer runs, it judges at once from what the last stop reported and what runs now, and starts the handover a moment after its answer. It ends a running countdown, a compact or `/clear` of your own, the end of the session and a context that has shrunk below where it was asked, and `later` after it takes it back. The help and the menu name it.
 - `/sweet-spot status` says where the context stands in one line: the tokens against the window, where the next handover comes (the value a `later` set, with the threshold of the settings beside it) and the emergency brake. In a dry run it says that the mod only reports, with rejected settings it gives the reasons, and just after a compact, with no size read yet, it says so and still gives the threshold and the brake. It only reads, a running countdown goes on, and it runs at once while an answer is running. The help and the menu name it.
 
 ## [0.1.0] - 2026-10-11

@@ -68,6 +68,7 @@ const clocked = () => {
       turns: 10,
       lastAttempt: undefined,
       later: undefined,
+      asap: undefined,
     }),
     judge: () => ({ kind: 'act', tokens: 210_000 }),
     carry: (_, now) => void s.carried.push(now),

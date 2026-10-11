@@ -3,7 +3,7 @@
 
 import type { CompactCheck } from './compact-check'
 import type { Countdown } from './countdown'
-import type { Attempt, Later } from './decide'
+import type { Asap, Attempt, Later } from './decide'
 import type { LevelMemo } from './log'
 import { freshPairing, type Pairing } from './pairing'
 
@@ -45,6 +45,13 @@ export type State = LevelMemo & {
   // The next handover moved back by `/sweet-spot later`, until it is spent or the context shrinks below where it was asked. Kept here
   // only: a reload forgets it, like a change in /config.
   later: Later | undefined
+  // A handover asked for with `/sweet-spot asap`, until a handover begins (spent, whether it goes through or not). Kept here only, like `later`.
+  asap: Asap | undefined
+  // What the last stop of the main loop said about background tasks and timers, which nothing else reads: `asap` at rest judges from it. It goes
+  // at the start of a turn and at the end of the session, when it no longer holds, and then what runs is not known.
+  lastStop: { backgroundTasks: number; oneShotTimers: number } | undefined
+  // The step that starts the handover of `asap` at rest is planned and has not begun; a second `asap` must not plan another.
+  asapScheduled: boolean
   // A redelivery is under way: a second one would submit the message twice.
   redelivering: boolean
   // From the start of a turn of the main loop to its end, however it ended. The command runs at once while an answer runs (it is
@@ -74,6 +81,9 @@ export const freshState = (): State => ({
   pending: undefined,
   pendingIn: undefined,
   later: undefined,
+  asap: undefined,
+  lastStop: undefined,
+  asapScheduled: false,
   redelivering: false,
   answerRunning: false,
   afterHandoff: undefined,
