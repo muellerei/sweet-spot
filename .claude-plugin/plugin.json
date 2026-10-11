@@ -28,7 +28,7 @@
     "threshold": {
       "type": "number",
       "title": "Handoff threshold (tokens)",
-      "description": "Context size at which the session is handed over to a fresh one, once the work at hand is done. Values below 130000 are rejected: a fresh session starts near that size and would hand over again at once.",
+      "description": "Context size at which the session is handed over to a fresh one, once the work at hand is done. Values below 130000 are rejected: a fresh session starts at 62k to 98k tokens in real handovers, and a threshold close to that would hand over again soon after.",
       "default": 200000,
       "min": 130000
     },
