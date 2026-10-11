@@ -28,6 +28,12 @@ The mod writes diagnostic lines to the transcript when the environment variable 
 | `debug` | What the mod made of an event: judgements, the steps inside a handoff, and errors it caught that have no visible effect.                      |
 | `trace` | What reached the mod: the raw events, without a judgement.                                                                                    |
 
+The countdown before a handover writes its lines with the prefix `countdown:`, at these levels:
+
+- `info`: `starts` with its seconds, the way, the kind (`button` with Not now, `cap` after two deferred pauses, `brake` for the announcement at the emergency brake) and the deferred pauses so far; `ran out` when it hands over.
+- `debug`: `ended` with the reason it ended without a handover: `edit` (typing), `submit`, `turn`, `command` (`later`), `session` (the session ended, `/clear` too), `compact` (one the mod did not start), `prompt` (text came into the prompt without an edit) or `late` (the clock ran out more than 3 s past the deadline). `ran out, decided …` when the fresh judgment at its end no longer hands over, `moved back by Not now`, `held, survey` and `goes on, survey gone` with the seconds left, and why none began: `none, at the emergency brake`, `none, no screen draws the band`, `none, a draft waits in the prompt` with the deferred pauses, or `runs already`. `deferred pauses over, the context shrank` ends the count.
+- `warn`: `could not read the session when it ran out` and `could not read the clock at a survey`; both end the countdown without a handover.
+
 Case and surrounding spaces do not matter. Any other value, `1` and `true` included, logs at `warn` and says so in one `warn` line. No line carries text you or the model wrote, except the invalid value of the variable itself; they hold names, numbers, durations and reasons from a fixed set.
 
 Two ways to turn it on:

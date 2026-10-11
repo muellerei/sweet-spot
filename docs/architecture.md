@@ -15,6 +15,23 @@ pure: the caller takes the snapshot, acts on the answer and keeps the record of 
 `/sweet-spot later` moves the next handover back: `later.ts` makes the answer and the value from the context the command reads, and
 `decide` then judges at `thresholdInForce` instead of the threshold, until that handover is spent or the context shrinks (`laterAt`).
 
+**The countdown.** Where `decide` says to hand over, `atPause` asks `countdownBegun` first. With `countdown_seconds` at 0 or no first
+way it hands over at once, as before there was a countdown. Otherwise `kindAt` in `countdown.ts` picks the kind from the context, a
+later handover and the deferred pauses: `immediate` at the emergency brake with no later handover, `brake` there with one (an
+announcement with no button, which spends the later handover as it begins), `cap` after two deferred pauses, and `button` (with "Not
+now") below that. `begin` in `countdown-flow.ts` reads where the session draws (no band on a surface without one: at once) and, for
+`button`, the prompt: a draft holds the countdown back to the next pause. Each pause that holds back or begins a countdown counts as
+deferred (`deferred` in `state.ts`) until a handover begins, a later handover is asked for or the context shrinks. The countdown lives
+in the state (`countdown`), with a deadline that is a time, not a count of ticks; the band only draws it. A person ends it with no
+handover: typing (`typed` tells the echo of the digit before its press from typing), a submit, a turn, `later`, the end of the session or
+a compact the mod did not start, each synchronously before its handler waits (`end`). "Not now" goes through `press`, which moves the handover
+back the way the command does. When it runs out, `runOut` reads the prompt, the session and then the clock, checks after the last wait that
+the countdown still runs, judges afresh with `decide`, and only then carries out the handover at the pause's own `carry`; text in the
+prompt, a clock more than `LATE_MS` late or a judgment that no longer hands over end it instead. A survey in the band holds it: only the
+drawing sees one (`hasSurvey`), reports a change to `surveyed`, and the time left is kept until the survey goes. The pure parts (deadline,
+seconds left, kind, what Not now moves back by, the band's text, the digit's echo) are in `countdown.ts`; the timing is in
+`countdown-flow.ts`, which reaches the host through `CountdownIo` and judges and hands over through `Expiry`.
+
 **The handover.** `handOver` in `register.tsx` starts it once the stop has returned. From then on typing is held (`hold.ts`), and
 `carryOut` in `relay.ts` runs `throughMethods`: the main method first (`handoff_method`), then, where it failed before it changed the
 session, the fallback (`handoff_fallback`). There are three ways. `throughCommand`: the user's command as a turn of its own, the file its
@@ -34,6 +51,7 @@ the store, and `/sweet-spot redeliver` submits it, into the session the `/clear`
 
 - **A pure judge.** `decide` knows nothing of the host, so every rule of when to hand over is tested with plain values.
 - **The host is reached through `Io`.** `relay.ts` gets the session as functions (`sessionIo` in `register.tsx`) instead of `$`,
+  and `countdown-flow.ts` likewise (`countdownIo`),
   because the host is assumed to follow `$` only into functions of the file that declares `register`. This rests on an assumption (see
   host-behaviour, Inside the mod); if it is wrong, the indirection can go.
 - **State lives in the module.** It survives `/clear`, so the minimum gap and `redeliver` work across a handoff, and it ends with a
@@ -60,6 +78,12 @@ Each is explained in a comment at the place named.
 - The `tool.call` hook only watches: it calls `next(e)`, returns its result unchanged, and catches its own errors. It looks for a decline
   only while the command's turn is awaited (`noteToolResult` in `relay.ts`), and reads the size only at the first call of the main loop
   after a compact (`checkAtToolCall`).
+- Anything that ends a countdown ends it before its handler's first wait, and the end of a countdown checks after its own last wait
+  that the countdown it belongs to still runs before it hands over (`end`, `runOut` in `countdown-flow.ts`).
+- The countdown spends a later handover and counts as an attempt only when it hands over, at the pause's `carry`; one that ends
+  without a handover leaves both as they were. The announcement at the brake is the exception: it spends the later handover as it
+  begins, so it comes once (`begin`).
+- Drawing the band changes no state but whether a survey holds it, and only on a change (`surveyed`).
 - The last look at the held typing and the end of holding are one step (`release`).
 - The handoff is in the store before `/clear`, until the fresh session has it (`deliver`).
 - The same session id after `/clear` means the handoff failed (`deliver`).

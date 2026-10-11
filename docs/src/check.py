@@ -112,7 +112,8 @@ else:
         if not default or user_config.get(key, {}).get('default') != default.group(1):
             problems.append(f'plugin.json: {key} has default {user_config.get(key, {}).get("default")!r}, DEFAULTS in hooks/config.ts has {default.group(1) if default else None!r}')
 
-# The default and the span of countdown_seconds are written in config.ts (DEFAULTS and COUNTDOWN_SECONDS) and in plugin.json.
+# The default and the span of countdown_seconds are written in config.ts (DEFAULTS and COUNTDOWN_SECONDS) and in plugin.json, the default
+# also in the README's settings table.
 span = re.search(r'export const COUNTDOWN_SECONDS = \{ min: (\d+), max: (\d+) \} as const', config_ts)
 default = re.search(r'countdownSeconds: (\d+)', defaults.group(1)) if defaults else None
 if not span or not default:
@@ -122,6 +123,7 @@ else:
     for field, wanted in (('default', default.group(1)), ('min', span.group(1)), ('max', span.group(2))):
         if str(entry.get(field)) != wanted:
             problems.append(f'plugin.json: countdown_seconds has {field} {entry.get(field)!r}, hooks/config.ts has {wanted}')
+    expect(re.findall(r'\| `countdown_seconds`\s*\| `(\d+)`', readme), default.group(1), 'README settings table, countdown_seconds default')
 
 # The README and plugin.json are for people who use the mod: the host's word for the call that writes the handoff is not theirs.
 for path in (('README.md',), ('.claude-plugin', 'plugin.json')):

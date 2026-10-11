@@ -28,6 +28,7 @@ sweet-spot hands a long Claude Code session over before the context gets too big
 **Built to be safe**
 
 - **Only at a pause.** Never in the middle of a turn, never from a subagent.
+- **Counts down first.** A line above the prompt counts down 10 seconds, with "Not now" to move the handover back.
 - **Waits for running work.** A subagent, a background task or a timer holds it back.
 - **Typing is not lost.** What you type during a handover is held and goes in when it is done.
 - **Writes nothing.** No files, no network, no processes of its own.
@@ -42,7 +43,13 @@ Developed against Claude Code 2.1.296; older versions are not tested, and versio
 /reload-plugins
 ```
 
-That is all the setup there is. Work until the context passes 200k tokens, and at the end of an answer you see:
+That is all the setup there is. Work until the context passes 200k tokens, and at the end of an answer a line above the prompt counts down:
+
+```text
+Handing over to a fresh session in 10 s · context 205000 of 200000 · 1: Not now, +25000
+```
+
+Press `1` to move the handover back, or start typing to keep working. Otherwise, when it runs out, you see:
 
 ```text
 handing over now, context 205000 tokens
@@ -66,11 +73,12 @@ A fresh session starts at 62k to 98k tokens in real handovers. Nobody publishes 
 
 ## What it does
 
-At the end of an answer it looks at the context size. Past the threshold, and when nothing else is going on, it hands over. By default that means it asks for a handoff, clears the session and submits the text of the handoff file, not its path, as the first message of the new one. With `/compact` as the way, the session stays and only gets smaller; nothing is cleared or submitted.
+At the end of an answer it looks at the context size. Past the threshold, and when nothing else is going on, it counts down and then hands over. By default that means it asks for a handoff, clears the session and submits the text of the handoff file, not its path, as the first message of the new one. With `/compact` as the way, the session stays and only gets smaller; nothing is cleared or submitted.
 
 - **Only at a pause.** It acts when an answer is finished, never in the middle of a turn and never from a subagent. A turn that ended with an error, a refusal or Esc is no pause.
+- **A countdown before it acts.** A line above the prompt says what is coming and counts down `countdown_seconds` (10 by default). "Not now" (key `1` in an empty prompt) moves the handover back, as `/sweet-spot later` with no number does. Typing or sending a message stops the countdown without moving anything; the next pause counts down again. A draft in the prompt holds the countdown back until the next pause. After two pauses that did not hand over, the countdown comes without "Not now", typing no longer stops it, and your draft stays in the prompt. When the countdown runs out the mod looks again and hands over only if it still should.
 - **Not now, if you say so.** In the middle of something? `/sweet-spot later 50k` moves this one handover back: the mod hands over once the context has grown 50k tokens past where it is now. The next handover uses your threshold again. It never goes past the emergency brake and never brings a handover forward. With no number it takes `later_tokens`.
-- **It waits for running work.** While a subagent, a background task or a one-shot timer is running, it postpones, because a handoff written now could not hold that work's result, and the result would come into a fresh session that does not know what it was for. It says so once ("handoff postponed, a subagent is running, context 201293 tokens"); it does not repeat the line at every stop. It acts at the first pause after the last one has finished (measured: the answer after the last subagent ended handed over). Past an emergency brake (150k above the threshold, never beyond 90 percent of the window) it goes ahead anyway and says so.
+- **It waits for running work.** While a subagent, a background task or a one-shot timer is running, it postpones, because a handoff written now could not hold that work's result, and the result would come into a fresh session that does not know what it was for. It says so once ("handoff postponed, a subagent is running, context 201293 tokens"); it does not repeat the line at every stop. It acts at the first pause after the last one has finished (measured: the answer after the last subagent ended handed over). Past an emergency brake (150k above the threshold, never beyond 90 percent of the window) it goes ahead anyway and says so, with no countdown; if you moved the handover back, a countdown without "Not now" announces it once.
 - **You choose the way.** `handoff_method` is the main way, `handoff_fallback` the one tried when the main way fails before it changed the session, and the change is said with its reason. The ways: the mod writes the handoff itself with a built-in prompt (`internal-handoff`, the default); Claude Code's own `/compact` (`builtin-compact`, the default fallback); or your own command, run as a turn of its own, whose file the mod reads (`external-command`, needs `handoff_command`). If Claude Code refuses the compact (it does in a headless `-p` or SDK session) or a hook vetoes it, the fallback takes over; if you press Esc during it, nothing else hands over.
 - **A compact that is not enough is not repeated.** If the context is still above the threshold right after a compact (at the first tool call of the next turn, or its pause), the next time the fallback takes over; with no fallback, the mod says so once and leaves the session alone until a pause is below the threshold again.
 - **Typing is held, not lost.** What you type while a handover runs is held and goes in when it is done: into the fresh session with the handoff, or into the compacted session. If submitting the message fails, `/sweet-spot redeliver` is the way out: it submits it again.
@@ -134,22 +142,23 @@ There are several context mods. They fall into a few approaches, and this table 
 
 ## What it does not do
 
-No memory, no rules, no panel or status line. It has no summarizer of its own: when it compacts, it starts Claude Code's own `/compact`. Those belong in other tools. The first version also has no countdown or button before it acts, no cache keep-warm and no log file; the [CHANGELOG](CHANGELOG.md) lists them under "Not in this version".
+No memory, no rules, no panel or status line; the line above the prompt shows only while a countdown runs. It has no summarizer of its own: when it compacts, it starts Claude Code's own `/compact`. Those belong in other tools. The first version also has no cache keep-warm and no log file; the [CHANGELOG](CHANGELOG.md) lists them under "Not in this version".
 
 ## Settings
 
 In the `/config` menu under sweet-spot.
 
-| Setting             | Default            | What it does                                                                                                                                                                                                                   |
-| ------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `threshold`         | `200000`           | Context size in tokens at which it hands over. Values below `130000` are refused. On a small window it is lowered to 80 percent of the window.                                                                                 |
-| `dry_run`           | off                | Only say that a handoff would happen, and do nothing. Turn on to watch what the mod would do before it acts.                                                                                                                   |
-| `min_gap_minutes`   | `10`               | Least time between two attempts. `0` turns the whole gap off.                                                                                                                                                                  |
-| `min_gap_turns`     | `5`                | Least number of turns between two attempts. `0` turns the whole gap off.                                                                                                                                                       |
-| `later_tokens`      | `25000`            | How far `/sweet-spot later` moves the next handover back when you give it no number, in tokens.                                                                                                                                |
-| `handoff_method`    | `internal-handoff` | How the session is handed over. `internal-handoff`: the mod writes a handoff and starts a fresh session with it. `builtin-compact`: Claude Code's own `/compact`, the session stays. `external-command`: your own command.     |
-| `handoff_fallback`  | `builtin-compact`  | Used when the main method fails before it changed the session: any of the three, or `none` for no second try (the mod says why). The same value as `handoff_method` means no fallback.                                         |
-| `handoff_command`   | empty              | Only used with `external-command` (advanced). Name of your own handoff command, without the slash. `external-command` with no command here switches the mod off and says why.                                                  |
+| Setting             | Default            | What it does                                                                                                                                                                                                                            |
+| ------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `threshold`         | `200000`           | Context size in tokens at which it hands over. Values below `130000` are refused. On a small window it is lowered to 80 percent of the window.                                                                                          |
+| `dry_run`           | off                | Only say that a handoff would happen, and do nothing. Turn on to watch what the mod would do before it acts.                                                                                                                            |
+| `min_gap_minutes`   | `10`               | Least time between two attempts. `0` turns the whole gap off.                                                                                                                                                                           |
+| `min_gap_turns`     | `5`                | Least number of turns between two attempts. `0` turns the whole gap off.                                                                                                                                                                |
+| `later_tokens`      | `25000`            | How far `/sweet-spot later` moves the next handover back when you give it no number, in tokens.                                                                                                                                         |
+| `countdown_seconds` | `10`               | Seconds the line above the prompt counts down before a handover, with "Not now". A whole number from `0` to `60`; `0` hands over at once. Without a terminal or desktop window to show it (VS Code, mobile), it hands over at once too. |
+| `handoff_method`    | `internal-handoff` | How the session is handed over. `internal-handoff`: the mod writes a handoff and starts a fresh session with it. `builtin-compact`: Claude Code's own `/compact`, the session stays. `external-command`: your own command.              |
+| `handoff_fallback`  | `builtin-compact`  | Used when the main method fails before it changed the session: any of the three, or `none` for no second try (the mod says why). The same value as `handoff_method` means no fallback.                                                  |
+| `handoff_command`   | empty              | Only used with `external-command` (advanced). Name of your own handoff command, without the slash. `external-command` with no command here switches the mod off and says why.                                                           |
 
 The two ways are choices in `/config`, so they cannot be mistyped; an unknown value is refused. Does not load before Claude Code 2.1.271: the host rejects a mod with fixed choices in an older version ("If you declare `options` on any field, users on Claude Code versions before v2.1.271 can't load the plugin", Claude Code plugin reference, section "Limit a field to fixed options"). Examples:
 
@@ -176,7 +185,7 @@ The mod has one command, `/sweet-spot`, and the word after it says what it does.
 - A reason for postponing is said once, not at every stop. When the reason changes, or the wait ends and returns, it is said again.
 - A dry run counts as an attempt and starts the minimum gap, so you do not get a new "would hand over" at every turn.
 - `redeliver` submits only into the fresh session that `/clear` made, and says so if you are in another one (after a `/resume`, say). Only a handoff that failed at the submit can be redelivered, and only until the mod is reloaded; after a reload it says "nothing to redeliver". It does not run while an answer is still running: it says so, and you try again when the answer is done.
-- `later` holds only for the next handover in this session; anything that shrinks the context (a compact, yours too, or `/clear`), a reload or a change in `/config` forget it. The mod gives no warning before it hands over yet, so say `later` before the answer that crosses the threshold has ended, not after.
+- `later` holds only for the next handover in this session; anything that shrinks the context (a compact, yours too, or `/clear`), a reload or a change in `/config` forget it. "Not now" in the countdown is the same as `later` with no number.
 - While a handoff runs, a message with an attachment is turned away, because the mod cannot reach the attachment. Send it again afterwards. Slash commands still run.
 - Claude Code starts its turn counter over after `/clear`, while the mod still remembers the turn of the last attempt. The turn part of the gap therefore ends only once the new counter is `min_gap_turns` past the old number; the time part is what ends it sooner.
 - A handoff command of your own needs permission to run a shell command and to write a file in the temp directory. Without an allow rule for them, Claude Code asks, and the question holds the handoff. The mod says nothing while it waits; after 5 minutes it gives up on the command and falls back. Answering the question ends the wait sooner. Esc or "No" at the question cancels the handover if the command then writes no file; a rule that denies the call falls back to the other way. Allow `Bash` and `Write` for the temp directory if you want it unattended.
@@ -187,9 +196,9 @@ Start Claude Code with `SWEET_SPOT_LOG_LEVEL=info claude`. At every end of an an
 
 ## Try it
 
-1. Turn `dry_run` on and work until the context passes the threshold. You get one line, "would hand over now", and nothing else happens.
+1. Turn `dry_run` on and work until the context passes the threshold. The countdown says what it would do, then you get one line, "would hand over now", and nothing else happens.
 2. Pass the threshold while a subagent runs: it says once "handoff postponed, a subagent is running" and hands over at the first pause after the subagent has finished.
-3. Turn `dry_run` off and let an answer finish past the threshold: the session hands over to a fresh one that starts with the handoff.
+3. Turn `dry_run` off and let an answer finish past the threshold: after the countdown the session hands over to a fresh one that starts with the handoff. Press `1` during a countdown to see "Not now" move it back.
 
 For a quick test, set `threshold` to `130000`, the lowest value it accepts.
 

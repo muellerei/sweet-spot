@@ -62,8 +62,8 @@
     "countdown_seconds": {
       "type": "number",
       "title": "Countdown before a handover (seconds)",
-      "description": "How long the mod waits before it hands over on its own. 0: no wait. A whole number from 0 to 60.",
-      "default": 0,
+      "description": "Seconds the mod counts down above the prompt before it hands over on its own. Not now (key 1) moves the handover back as /sweet-spot later does; typing or sending a message stops the countdown, and the next pause counts down again. 0: no countdown, the mod hands over at once. A whole number from 0 to 60.",
+      "default": 10,
       "min": 0,
       "max": 60
     },

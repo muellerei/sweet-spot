@@ -4,8 +4,20 @@ All notable changes to sweet-spot are listed here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+
+- A countdown before an automatic handover: at the pause that would hand over, a line above the prompt says what is coming and counts down `countdown_seconds` (new setting, default 10, a whole number from 0 to 60; 0 hands over at once, as before). "Not now", a button on key `1` in an empty prompt, moves the handover back as `/sweet-spot later` with no number does and answers the same way. Typing, a submit, a new turn (a finished background task starts one too), `later`, the end of the session and a compact the mod did not start end the countdown without moving anything; the next pause counts down again. A draft in the prompt holds the countdown back to the next pause; after two pauses that did not hand over, the countdown comes without "Not now", typing does not stop it, and it says the draft stays in the prompt. When it runs out the mod reads the prompt and the session again and hands over only if the fresh judgment still says so; text that came into the prompt without typing (the history, Tab) stops it, and so does a clock more than 3 s past the deadline. At the emergency brake there is still no countdown, except once as an announcement without "Not now" when a handover was moved back to or past the brake. A survey in the band holds the countdown until it goes. With no terminal or desktop window to show the line (VS Code, mobile) the mod hands over at once. With `SWEET_SPOT_LOG_LEVEL` set, the diagnostic output names the start, the end with its reason, Not now and the deferred pauses.
+
+### Chosen, with the reason
+
+- **10 seconds,** taken from auto-handoff as a starting value, not measured; to be checked after some weeks of use.
+- **Two deferred pauses, then a countdown that typing does not stop.** Without a cap, a draft at every pause would push the handover up to the emergency brake, which hands over even past running work. Typing does not start the count over, or whoever types at every pause would get there all the same.
+- **No "Not now" at the emergency brake.** The brake must not be moved back; a button or typing that stopped it would push the handover past it. Whoever pressed "Not now" before is told once instead of being handed over without warning.
+- **3 s late ends the countdown.** A clock read that far past the deadline means the machine slept or the timer stayed out, and the person most likely never saw the line. An assumption, not measured.
+
 ### Changed
 
+- A later handover (`/sweet-spot later`) is now spent by a handover that begins, no longer by the pause that decides on one. With the countdown, that pause can end with no handover (typing, a new turn), and spending `later` there would drop it unseen: the next pause would hand over at the threshold instead of the value `later` asked for.
 - New `/sweet-spot later [tokens]`: moves the next handover back until the context has grown that many tokens past where it is now (`later 50k`), and says the value it hands over at and the context. With no number it takes the new setting `later_tokens` (default 25000). It holds for this one handover only, never goes past the emergency brake and never brings a handover forward; anything that shrinks the context (a compact, yours too, or `/clear`) and a reload end it. Where it cannot move the handover back it says why and changes nothing.
 - `/sweet-spot` now runs at once when you type it while an answer is still running, instead of after the end of that answer, when the mod has already decided about the pause. `redeliver` typed during an answer says "an answer is running, try again when it is done" and does nothing; before, it waited and ran after the answer.
 - Esc or "No" at a permission prompt in the turn of your own handoff command now cancels when the command writes no file because of it: no fallback hands over after it, and the line says "cancelled". Before, Esc at the prompt fell back to the mod's own handoff. A rule that denies the call still falls back, and so does a "No" followed by a hint if the command then writes the file the usual way.
@@ -71,4 +83,4 @@ First version. The mod only reports what it would do until `dry_run` is turned o
 
 ### Not in this version
 
-Countdown and button before it acts, early warning, keeping the prompt cache warm while you are away, a log file, compacting in place as a last resort, a setting for the order of the fallback.
+Early warning, keeping the prompt cache warm while you are away, a log file, compacting in place as a last resort, a setting for the order of the fallback.

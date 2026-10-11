@@ -12,7 +12,11 @@ Each entry ends with what it means for a mod. The code says why it is built the 
 why rests on. Verified against Claude Code 2.1.294 to 2.1.296. When the version the mod is developed against goes up (the first entry
 of the CI matrix), the measurements the core rests on are taken again: the order of stop and turn end, `/clear` and the session,
 `command.run`, `$.session.compact` (with Esc, whose refusal reads "Compaction canceled."), and the words the host uses for a declined
-permission (the start of the tool result that `USER_REJECTED` in `handoff.ts` looks for).
+permission (the start of the tool result that `USER_REJECTED` in `handoff.ts` looks for). For the countdown: a digit in an empty prompt
+comes as `prompt.edit` before its `ui.press` (measured, under Commands); the history, Tab on a suggestion and `$.prompt.fill` fill the
+prompt with no `prompt.edit` (measured, under Commands); a value written in the `ui.render` hook when a survey comes up or goes (the
+write is measured, the change to "survey present" is not); and that a compact raises no `session.end` (derived, not measured: see
+Open).
 
 ## Events and their order
 
@@ -106,6 +110,10 @@ permission (the start of the tool result that `USER_REJECTED` in `handoff.ts` lo
   (`$.prompt.read()` 700 ms after the edit gave `""`). With text in the prompt the digit is typed, no press follows. At the edit the two
   cases look alike; `$.prompt.read()` after the delay tells them apart. _Measured 2026-10-11, Claude Code 2.1.296; throwaway mod with a
   `plain` Button in `AbovePrompt` and hooks on `prompt.edit` and `ui.press`._
+- **The terminal draws a `plain` band `Button` on `hotkey="1"` as `1: <label>`.** _Assumed: the types of `Button` say a plain one is
+  drawn as the hotkey in the accent color, a colon and the label (`1: Yes`); the digit measurement above did not record the drawing._
+  The countdown's band leaves the key out of its text and counts it in its width (`bandOf` in `countdown.ts`), and the README shows the
+  line that way. If the host draws it differently, the key goes unseen or the band runs one or two cells off.
 - **A digit does not reach the band while a dialog is open.** With the `/model` picker open, a `1` selected the picker's first row; no
   `prompt.edit` and no `ui.press` came. _Measured 2026-10-11, Claude Code 2.1.296; the same mod, the `/model` picker only (a permission
   prompt was not tried)._ Pressing the digit there changed the saved default model of the machine.
@@ -240,3 +248,8 @@ throwaway mod for the veto. Interactive runs through tmux, from the veto on thro
 - Whether the host puts the name in front of the lines that answer typing during a handoff, which carry it themselves.
 - Whether `/reload-plugins` loads a changed mod and calls `register` again.
 - What can reload the mod in a session nobody is watching.
+- Whether a reload during a countdown ends it without a handover. It is expected to, since the reload drops the mod's state and the
+  old module with its timers; not tried.
+- Whether a compact raises `session.end`. `SessionEndReason` in the types has no compact and the session id stays, so the countdown
+  ends on `session.compact` itself; measured is only that a compact raises no `turn.start` and no stop.
+- A survey coming up in the band while a countdown runs: the drawing reports `hasSurvey`, but no survey appeared in the runs.

@@ -10,9 +10,14 @@ A test body gets two things: `$`, to raise events as the host would (`$.session.
 `$.turn.complete`, `$.prompt.submit`, `$.command.run`), and `on`, to answer the calls the mod makes. `test-support.ts` builds the host
 from three layers, each a function that registers answers with `on`:
 
-- `withMod` records what the mod shows: toasts, log lines, debug lines, the command it registers.
+- `withMod` records what the mod shows: toasts, log lines, debug lines, the command it registers, and each status line it sets
+  (`seen.status`, `undefined` where it cleared one). It also answers `ui.render` with an empty band, as the host draws one with nothing
+  of the mod's in it.
 - `sessionWith` is what the mod reads at a stop: context size, window, turn count, running agents, rate limits. It also brings a clock
-  (`mock.clock`), so a test moves time on and lets what is due run (`clock.advance`, `clock.settle`).
+  (`mock.clock`), so a test moves time on and lets what is due run (`clock.advance`, `clock.settle`). It answers where the session draws
+  (`surfaces`, `['terminal']` by default) and what the prompt holds (`draft`, which a test sets with no `prompt.edit`, as the history, Tab
+  or another mod fill the prompt). It answers `prompt.edit` as the editor does, with the text after the splice, and `session.end`.
+  `world.reads` lists the reads of the surfaces and the prompt, so a test can say that something was not asked at all.
 - `hostWith` is the session as a handoff touches it: the command list, the commands that run, the files, the store, `/clear`, the
   submit, `$.model.fork`, `$.session.compact` and `tool.call`. Each step lands in `host.steps`, so a test can say what happened in what order
   (`['run handoff …', 'run clear', 'submit …']`, or `['compact']`). A compact answers with `{ messages }`, `{ skip }` or a refusal;
@@ -20,7 +25,40 @@ from three layers, each a function that registers answers with `on`:
   after Esc at a permission prompt.
 
 On top sit the moments a test is about: `pause` (an answer ends), `reachThreshold` (a pause past the threshold, with the handoff under
-way), `commandTurnEnds` (the command's turn ends with an answer), `typeInto` (a person types).
+way), `commandTurnEnds` (the command's turn ends with an answer), `typeInto` (a person types), `runRelay` (the mod's command) and
+`compactByHand` (a compact with trigger `manual`, the step `compact manual`, answered with a compaction unless `manualCompact` says
+otherwise).
+
+Both layers take `during` steps: a function run once while a read or a step is under way, for what happens in the middle of it.
+`sessionWith` knows `usage`, `agent.list`, `surfaces` and `prompt.read`; `hostWith` knows `run <command>`, `model.fork`, `submit`,
+`set <store key>`, `compact` and `read log level`. That is how a test lets a person type, or the clock move on, while the end of a
+countdown waits on the prompt.
+
+## The countdown in the tests
+
+`countdown_seconds` is 10 by default, so every pause past the threshold would count down first. Tests through the host use `modTest`
+from `test-support.ts` instead of the engine's `test`: it is the same call with `countdown_seconds: 0` mixed into the options, so a test
+that is not about the countdown hands over at the pause, as before there was one. A test that sets the option itself wins. It has a name
+of its own, so each test that takes it shows. The exception is the tests in `register.test.tsx` that pin the settings line against the
+defaults of `plugin.json`: they take the raw `test`, or they would check the value mixed in instead of the one in `plugin.json`. Unit
+tests that do not load the mod take the raw `test` too.
+
+The band is drawn through `$.ui.mount` with the surface `terminal` and the component `AbovePrompt`, and the props the host hands a band
+(`bodyColumns`, `hasSurvey`). What it returns can be searched (`find`), pressed (`press({ key: 'not-now' })`) and drawn again with new
+props (`redraw`), which is how a test brings a survey up or takes it away.
+
+## What the engine does for the fakes
+
+Some of the host's rules the test engine keeps itself, so the fakes do not repeat them:
+
+- Inside a `command.run` hook it refuses a command and a compact, as the host does. `fakes.test.tsx` pins that with a plugin above the
+  mod that makes both calls inside the hook of the mod's command and at the start of a turn; should a later engine stop refusing, those
+  tests fall and the fakes take the rule over.
+- It refuses a setting above `max` in `plugin.json` before the mod loads, but lets a fraction through. That is why the test of a value
+  above 60 runs on `configOf` directly, and the test through the host is the one for a fraction.
+
+A plugin for such a probe goes into the options (`plugins: [{ name, tier: 'prepend', register }]`). The engine loads it as a module of
+its own that shares no code with the test file: `$` is spelled out at each call, and two hooks that do the same thing repeat it.
 
 ## Where the fake differs from the host
 

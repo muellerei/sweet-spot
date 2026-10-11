@@ -7,7 +7,7 @@ import { endTurn, hostWith, pause, sessionWith, startSession, startTurn, stop, w
 // get a number below the minimum past it, so those rejections are tested on `configOf` directly. The settings line shows from `info` on,
 // so the log level is set: without it the test would check nothing.
 const SETTINGS =
-  'info: settings: threshold 200000, dry_run off, min gap 10 minutes and 5 turns, later_tokens 25000, countdown_seconds 0, method internal-handoff, fallback builtin-compact, log level info'
+  'info: settings: threshold 200000, dry_run off, min gap 10 minutes and 5 turns, later_tokens 25000, countdown_seconds 10, method internal-handoff, fallback builtin-compact, log level info'
 
 test('the settings the mod runs with are the defaults of plugin.json', async ($, on) => {
   const seen = withMod(on)

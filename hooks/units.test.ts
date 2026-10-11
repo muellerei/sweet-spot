@@ -19,7 +19,7 @@ test('configOf: nothing set gives the defaults, and the defaults are these', asy
     minGapMinutes: 10,
     minGapTurns: 5,
     laterTokens: 25_000,
-    countdownSeconds: 0,
+    countdownSeconds: 10,
     handoffMethod: 'internal-handoff',
     handoffFallback: 'builtin-compact',
     handoffCommand: '',
@@ -29,7 +29,15 @@ test('configOf: nothing set gives the defaults, and the defaults are these', asy
 })
 
 test('configOf: valid values are taken as they are', async () => {
-  const result = configOf({ threshold: 130_000, dry_run: false, min_gap_minutes: 0, min_gap_turns: 0, later_tokens: 1, handoff_command: 'claude-mem:handoff' })
+  const result = configOf({
+    threshold: 130_000,
+    dry_run: false,
+    min_gap_minutes: 0,
+    min_gap_turns: 0,
+    later_tokens: 1,
+    countdown_seconds: 0,
+    handoff_command: 'claude-mem:handoff',
+  })
   expect(result).toEqual({
     ok: true,
     config: {

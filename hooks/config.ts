@@ -31,7 +31,7 @@ export const DEFAULTS: Config = {
   minGapMinutes: 10,
   minGapTurns: 5,
   laterTokens: 25_000,
-  countdownSeconds: 0,
+  countdownSeconds: 10,
   handoffMethod: 'internal-handoff',
   handoffFallback: 'builtin-compact',
   handoffCommand: '',
