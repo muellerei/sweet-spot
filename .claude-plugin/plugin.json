@@ -9,7 +9,21 @@
   "license": "MIT",
   "homepage": "https://github.com/muellerei/sweet-spot",
   "repository": "https://github.com/muellerei/sweet-spot",
-  "keywords": ["claude-code-mod", "context", "handoff", "cache"],
+  "keywords": [
+    "claude-code",
+    "claude-code-plugin",
+    "claude-code-mod",
+    "claude-code-mods",
+    "claude-mods",
+    "function-hooks",
+    "context-management",
+    "context-window",
+    "handoff",
+    "compaction",
+    "context-compaction",
+    "token-optimization",
+    "context-rot"
+  ],
   "userConfig": {
     "threshold": {
       "type": "number",
