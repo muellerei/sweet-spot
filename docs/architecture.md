@@ -89,7 +89,7 @@ Each is explained in a comment at the place named.
 - The same session id after `/clear` means the handoff failed (`deliver`).
 - The minimum gap ends after minutes or turns, and holds after a failed attempt too (`withinGap` in `decide.ts`).
 - A handler changes the state first, then reads the log level, then logs (`register`).
-- The value a pause judges at, the answer of `later` and the pause line all come from `thresholdInForce` in `decide.ts`: capped at the
+- The value a pause judges at, the answers of `later` and `status` and the pause line all come from `thresholdInForce` in `decide.ts`: capped at the
   brake of the window as it is at that pause, never below the threshold in force.
 - The command is `immediate`, so `later` typed during an answer comes before the pause that ends it is judged (host-behaviour,
   Commands); a handover that starts while it reads the context turns it down (`laterText` in `register.tsx`).

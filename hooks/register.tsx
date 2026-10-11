@@ -4,6 +4,7 @@ import { configOf, type Config, type ConfigResult } from './config'
 import { activeTasks, brakeFor, brakeOf, decide, effectiveThreshold, laterAt, oneShots, shrunk, thresholdInForce, type Decision, type Snapshot } from './decide'
 import { hold } from './hold'
 import { LATER_OVER, laterFor, tokensOf } from './later'
+import { statusFor } from './status'
 import { checkOf, firstMethod, judgedLine } from './compact-check'
 import { bandOf, kindAt, moveBack, NOT_NOW_KEY, typed, type Countdown, type Start } from './countdown'
 import { begin, end, endedLine, press, surveyed, type Answer, type CountdownIo, type EndReason, type Expiry } from './countdown-flow'
@@ -127,8 +128,8 @@ const registerCommand = async ($: Engine, state: State) => {
     // (docs/host-behaviour.md, Commands).
     await $.command.register({
       name: COMMAND,
-      description: 'Move the next handover back, or submit again the handoff that did not reach the fresh session',
-      argumentHint: 'redeliver | later [tokens]',
+      description: 'Show where the context stands, move the next handover back, or submit again the handoff that did not reach the fresh session',
+      argumentHint: 'status | later [tokens] | redeliver',
       immediate: true,
     })
   } catch (err) {
@@ -215,11 +216,34 @@ const laterText = async ($: Engine, settings: ConfigResult, rest: string, state:
 
 const verbOf = (args: string) => args.trim().split(/\s/, 1)[0]
 
-// What the command does is the word after it. `later` takes an argument, so the rest is its argument; `redeliver` takes none.
+// Reads the context and says where it stands; nothing in the state changes. It answers during a handover too, and says so.
+const statusText = async ($: Engine, settings: ConfigResult, state: State): Promise<Answer> => {
+  if (!settings.ok) return { text: offLine(settings.errors) }
+  let context: { tokens?: number; window: number }
+  try {
+    context = (await $.session.usage()).context
+  } catch (err) {
+    return { text: contextUnreadLine(why(err)), lines: [['warn', 'status: could not read the context size']] }
+  }
+  const { tokens, window } = context
+  const text = statusFor(settings.config, window, tokens, laterAt(state.later, tokens))
+  return {
+    text: state.handingOver ? `${text}, a handover is in progress` : text,
+    lines: [
+      [
+        'debug',
+        tokens === undefined ? `status: answered, context size unknown, window ${window} tokens` : `status: answered, context ${tokens} of ${window} tokens`,
+      ],
+    ],
+  }
+}
+
+// What the command does is the word after it. `later` takes an argument, so the rest is its argument; `status` and `redeliver` take none.
 const commandText = ($: Engine, settings: ConfigResult, args: string, state: State): Promise<Answer> | Answer => {
   const words = args.trim()
   const verb = verbOf(words)
   if (verb === 'later') return laterText($, settings, words.slice(verb.length), state)
+  if (words === 'status') return statusText($, settings, state)
   return { text: redeliverText($, settings.ok ? settings.config : undefined, args, state) }
 }
 

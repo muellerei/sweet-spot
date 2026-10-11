@@ -39,7 +39,7 @@ export const REDELIVERING = 'redelivering the handoff'
 export const NOTHING_TO_REDELIVER = 'nothing to redeliver'
 
 const USAGE =
-  'use `/sweet-spot later [tokens]` to move the next handover back, or `/sweet-spot redeliver` to submit again the handoff that did not reach the fresh session'
+  'use `/sweet-spot status` to see where the context stands, `/sweet-spot later [tokens]` to move the next handover back, or `/sweet-spot redeliver` to submit again the handoff that did not reach the fresh session'
 
 // An argument the command does not know is named, so that a guess like `wait 10000` does not read as a hint about something else.
 export const usageFor = (args: string): string => (args.trim() === '' ? USAGE : `unknown argument "${args}", ${USAGE}`)
