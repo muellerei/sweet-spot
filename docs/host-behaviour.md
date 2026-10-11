@@ -101,6 +101,38 @@ permission (the start of the tool result that `USER_REJECTED` in `handoff.ts` lo
   _Measured 2026-10-10, Claude Code 2.1.296; the same mod with `immediate: true`._
 - **Ctrl+Enter on a waiting command ends the answer.** The prompt offers "ctrl+enter to send now"; it ended the turn as `aborted`, with
   no `classic.Stop`, and ran the command 42 ms later. _Measured 2026-10-10, Claude Code 2.1.296; the same mod without `immediate`._
+- **A digit in an empty prompt raises `prompt.edit` first and `ui.press` about 0.4 s later.** With a band `Button` on `hotkey="1"`, the
+  edit read `text: ""`, `key: { key: "1" }`, `inputText: "1"`; the press came 405 and 407 ms after it in two runs, and the prompt stayed empty
+  (`$.prompt.read()` 700 ms after the edit gave `""`). With text in the prompt the digit is typed, no press follows. At the edit the two
+  cases look alike; `$.prompt.read()` after the delay tells them apart. _Measured 2026-10-11, Claude Code 2.1.296; throwaway mod with a
+  `plain` Button in `AbovePrompt` and hooks on `prompt.edit` and `ui.press`._
+- **A digit does not reach the band while a dialog is open.** With the `/model` picker open, a `1` selected the picker's first row; no
+  `prompt.edit` and no `ui.press` came. _Measured 2026-10-11, Claude Code 2.1.296; the same mod, the `/model` picker only (a permission
+  prompt was not tried)._ Pressing the digit there changed the saved default model of the machine.
+- **`$.prompt.read()` returns the draft at the pause.** A draft typed while an answer ran read back whole in `classic.Stop` and in
+  `turn.complete` (`{ text, cursor }`), and `{ text: "", cursor: 0 }` when nothing was typed. _Measured 2026-10-11, Claude Code 2.1.296;
+  the same mod._ A prompt suggestion shown in grey is not a draft: it read `""`.
+- **What raises `prompt.edit`:** typing, pasting, a cursor move (`start` equal to `end`, `inputText: ""`, `key: { key: "left" }`) and a
+  deletion (`ctrl+u`: `start 0`, `end 1`, `inputText: ""`). **What does not:** recalling the history with the up arrow, accepting a prompt
+  suggestion with Tab, and `$.prompt.fill` (called by the mod itself). After each of the three the prompt held text and no event had come;
+  the next edit's `text` carried it. _Measured 2026-10-11, Claude Code 2.1.296; the same mod._
+- **`turn.start` comes without a typed prompt.** A background Bash task that finished after the answer raised `prompt.submit` and then
+  `turn.start` with a `text` that begins `<task-notification>`, and a turn that ended in `answer`; no `prompt.edit`. A slash command that
+  runs a skill raises `prompt.submit` with the command line and `turn.start` with `<command-message>…` as its text. _Measured 2026-10-11,
+  Claude Code 2.1.296; the same mod, a task of `sleep 8` in the background._
+- **An `immediate` command at rest starts a compact, a `/clear` or a user command only from a later event.** Called inside the
+  `command.run` hook, `$.session.compact()` and `$.command.run` (for `clear` and for a skill) are refused by the host: "called from a
+  command.run hook, it would … the turn this hook is holding … run it from a later event". With the same call made 300 ms later from
+  `$.clock.after`, all three ran: the compact resolved with the summary messages after about 12 s, `/clear` ended the session
+  (`session.end`, reason `clear`) and returned `{ text: "" }`, and the skill command returned `{}` at once and started a turn. _Measured
+  2026-10-11, Claude Code 2.1.296; the same mod, the commands typed at the prompt with no answer running._
+- **An `immediate` slash command raises `prompt.edit` and `command.run`, but not `prompt.submit`.** Sent from the history (arrow up) it
+  is not measured; no `prompt.edit` is expected there, since history does not raise one. A mod that needs to notice such a command
+  listens to `command.run`. _Measured 2026-10-11, Claude Code 2.1.296; the same mod, typed commands only._
+- **A module value set in the `ui.render` hook works, the change to "survey present" was not triggered.** The first render reported
+  `hasSurvey` as `undefined`, then `false`, the band showed the value, and no render loop followed. A survey never appeared in the
+  runs (they show up at random, not after three compacts either), so the switch to "present" is unmeasured. _Measured 2026-10-11,
+  Claude Code 2.1.296; the same mod._
 
 ## `$.model.fork`
 
