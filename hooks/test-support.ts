@@ -334,7 +334,11 @@ export const REJECTED_WITH_HINT = {
 export const DENIED_BY_RULE = { isError: true, result: 'denied', text: 'Permission to use Bash with command touch /var/T/x has been denied.' }
 export const COMPACT_DONE = { messages: [{ role: 'user', text: 'summary', toolUses: [] }] }
 // What a `$.model.fork` call answers with when it gives a handoff.
-export const modelForkAnswer = (text: string) => ({ isAnswered: true, text, usage: {} })
+export const modelForkAnswer = (text: string) => ({
+  isAnswered: true,
+  text,
+  usage: { input_tokens: 3, output_tokens: 900, cache_read_input_tokens: 120_000, cache_creation_input_tokens: 5 },
+})
 export const ANSWERED = modelForkAnswer('goal: finish the parser\nnext: the lexer')
 
 export type SessionWorld = ReturnType<typeof sessionWith>

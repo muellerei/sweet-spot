@@ -19,6 +19,7 @@ import {
   withoutTrailingSeparator,
   type Entry,
   type ModelForkAnswer,
+  type ModelForkUsage,
 } from './handoff'
 import type { Config, Method } from './config'
 import { fellBackLine } from './report'
@@ -61,6 +62,9 @@ export type Failure = { stage: 'command' | 'cancelled' | 'turn' | 'path' | 'read
 
 // How a run ended: with the failure, or with the way that handed over (a redelivery has no way to name).
 export type Outcome = { failure: Failure; method?: undefined } | { failure?: undefined; method?: Method }
+
+// A handoff written and not yet handed over: the first message, where the command's file is, and what the model read for the internal way.
+export type Prepared = { text: string; file?: string; usage?: ModelForkUsage }
 
 const failed = (stage: Failure['stage'], reason: string): Failure => ({ stage, reason })
 
@@ -285,7 +289,8 @@ export const redeliver = async (io: Io, state: State): Promise<Failure | undefin
   return failure
 }
 
-const throughCommand = async (io: Io, state: State, command: string): Promise<Failure | undefined> => {
+// Runs the user's command and reads the file it wrote; hands nothing over.
+export const prepareByCommand = async (io: Io, state: State, command: string): Promise<Prepared | Failure> => {
   // The name is compared whole: `claude-mem:handoff` stands beside `handoff` in the list and is not the user's command.
   if (!(await io.commands()).includes(command)) return failed('command', `the command "${command}" does not exist`)
   io.log('debug', `command "${command}" is listed`)
@@ -329,7 +334,14 @@ const throughCommand = async (io: Io, state: State, command: string): Promise<Fa
   }
   if (typeof handoff !== 'string' || handoff.trim() === '') return failed('read', 'the handoff file is empty')
   io.log('debug', `file read, ${handoff.length} characters`)
-  return deliver(io, state, firstMessage(handoff), file)
+  return { text: firstMessage(handoff), file }
+}
+
+const isFailure = (r: Prepared | Failure): r is Failure => 'stage' in r
+
+const throughCommand = async (io: Io, state: State, command: string): Promise<Failure | undefined> => {
+  const r = await prepareByCommand(io, state, command)
+  return isFailure(r) ? r : deliver(io, state, r.text, r.file)
 }
 
 // A `$.model.fork` call cannot be cancelled: the wait is limited. After the timeout it keeps running in the background and its late
@@ -360,7 +372,8 @@ const internalHandoffPrompt = async (io: Io): Promise<{ prompt: string; source: 
   }
 }
 
-const throughInternalHandoff = async (io: Io, state: State): Promise<Failure | undefined> => {
+// Asks the model for the handoff; hands nothing over.
+export const prepareInternally = async (io: Io): Promise<Prepared | Failure> => {
   let answer: ModelForkAnswer
   const began = await io.now()
   try {
@@ -375,7 +388,12 @@ const throughInternalHandoff = async (io: Io, state: State): Promise<Failure | u
   else io.log('warn', `internal handoff gave nothing (${modelForkKind(answer)}), ${took}`)
   if (!answer.isAnswered) return failed('model-fork', `the mod could not write the handoff: ${modelForkFailure(answer)}`)
   if (answer.text.trim() === '') return failed('model-fork', 'the mod could not write the handoff: the model replied with no text')
-  return deliver(io, state, firstMessage(answer.text))
+  return answer.usage === undefined ? { text: firstMessage(answer.text) } : { text: firstMessage(answer.text), usage: answer.usage }
+}
+
+const throughInternalHandoff = async (io: Io, state: State): Promise<Failure | undefined> => {
+  const r = await prepareInternally(io)
+  return isFailure(r) ? r : deliver(io, state, r.text)
 }
 
 // The session stays and only gets smaller: nothing is cleared, nothing is submitted, and nothing is left for `redeliver`. Called directly: the
