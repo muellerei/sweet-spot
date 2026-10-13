@@ -89,7 +89,10 @@ export const COMPACT_CANCELLED = 'Compaction canceled.' // host wording, measure
 // run falls back after Esc as it did before.
 export const USER_REJECTED = "The user doesn't want to proceed with this tool use." // host wording, measured 2.1.296
 
-export type ModelForkAnswer = { isAnswered: true; text: string } | { isAnswered: false; reason: string; status?: number | null }
+// What the model read and wrote for an answer: the share it read from the prompt cache says whether the cache was warm.
+export type ModelForkUsage = { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }
+
+export type ModelForkAnswer = { isAnswered: true; text: string; usage?: ModelForkUsage } | { isAnswered: false; reason: string; status?: number | null }
 
 type ModelForkUnanswered = Extract<ModelForkAnswer, { isAnswered: false }>
 

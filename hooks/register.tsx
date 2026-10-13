@@ -84,7 +84,7 @@ const sessionIo = ($: Engine, state: State): Io => ({
   home: () => $.env.get('HOME'),
   modelFork: async prompt => {
     const r = await $.model.fork({ prompt })
-    return r.isAnswered ? { isAnswered: true, text: r.text } : { isAnswered: false, reason: r.reason, ...('status' in r ? { status: r.status } : {}) }
+    return r.isAnswered ? { isAnswered: true, text: r.text, usage: r.usage } : { isAnswered: false, reason: r.reason, ...('status' in r ? { status: r.status } : {}) }
   },
   compact: async () => {
     const r = await $.session.compact()
