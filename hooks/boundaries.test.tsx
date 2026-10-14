@@ -16,10 +16,11 @@ import {
   modTest,
 } from './test-support'
 
-// Listens beneath each call that would leave the session, and lists the ones that were made.
+// Listens beneath each call that would leave the session, and lists the ones that were made. `process.run` is the host fake's, which lists
+// each run (`host.runs`): the one process the mod may start is `tail` on a transcript above 4 MiB (idle-read.test.tsx).
 const listenForOutside = (on: TestOn) => {
   const calls: string[] = []
-  for (const name of ['http.fetch', 'process.run', 'fs.write'] as const) {
+  for (const name of ['http.fetch', 'fs.write'] as const) {
     on(name, async () => {
       calls.push(name)
       return { value: undefined } as never
@@ -67,6 +68,7 @@ modTest(
     expect(host.steps[0]).not.toMatch(/writ|creat|sav|edit/i)
     expect(seen.logs).toHaveLength(2)
     expect(calls).toEqual([])
+    expect(host.runs).toEqual([])
   },
 )
 
@@ -79,4 +81,5 @@ modTest('a handoff through an internal handoff calls neither http nor a process,
   await reachThreshold($, world)
   expect(host.steps).toHaveLength(2)
   expect(calls).toEqual([])
+  expect(host.runs).toEqual([])
 })

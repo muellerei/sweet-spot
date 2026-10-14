@@ -86,6 +86,19 @@
       "title": "Handoff command",
       "description": "Only used with external-command (advanced). Name of your own handoff command, as the command list shows it, without the slash.",
       "default": ""
+    },
+    "idle_handoff": {
+      "type": "boolean",
+      "title": "Handoff after a long pause",
+      "description": "Before the prompt cache expires in a long pause, the mod writes a handoff; when you come back after the cache expired, your next message starts a fresh session with it instead of sending the whole conversation again. /resume leads back to the old session. Only with a one-hour cache.",
+      "default": true
+    },
+    "idle_handoff_min_tokens": {
+      "type": "number",
+      "title": "Handoff after a long pause, from (tokens)",
+      "description": "Context size from which the handoff after a long pause is prepared. 0: sweet-spot works it out from the session's baseline, what a fresh session sends with its first message, plus 30000.",
+      "default": 0,
+      "min": 0
     }
   }
 }

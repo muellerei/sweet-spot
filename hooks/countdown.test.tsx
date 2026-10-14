@@ -26,6 +26,7 @@ import {
   withMod,
   type SessionWorld,
   type TestEngine,
+  editPrompt,
 } from './test-support'
 
 // The countdown before an automatic handover: at a pause past the threshold the band counts down and offers "Not now", and the handover
@@ -311,7 +312,7 @@ modTest('the diagnostic output names the start of the countdown, its end and Not
 
 // One edit in the prompt, as the host raises it: the draft before, the splice, and the key that made it where one did.
 const edit = ($: TestEngine, before: string, inputText: string, { at = before.length, to = at, key }: { at?: number; to?: number; key?: string } = {}) =>
-  $.prompt.edit({
+  editPrompt($, {
     origin: { kind: 'composer' },
     text: before,
     cursor: before.length,

@@ -124,7 +124,7 @@ const MODEL_FORK_ANSWER = modelForkAnswer('goal: finish')
 const PAUSE =
   'info: pause: context 210000 of 1000000 tokens (threshold 200000, brake 350000), 0 background tasks, 0 timers, 0 subagents, turn 10, no attempt before, decided act'
 const SETTINGS =
-  'settings: threshold 200000, dry_run off, min gap 10 minutes and 5 turns, later_tokens 25000, countdown_seconds 0, method external-command, fallback internal-handoff, handoff command "handoff"'
+  'settings: threshold 200000, dry_run off, min gap 10 minutes and 5 turns, later_tokens 25000, countdown_seconds 0, idle_handoff on, idle_handoff_min_tokens 0, method external-command, fallback internal-handoff, handoff command "handoff"'
 const lines = (logs: string[]) => logs.filter(l => !l.startsWith('info: settings:'))
 const diagnostic = (logs: string[]) => logs.filter(l => /^(warn|info|debug|trace): /.test(l))
 
@@ -223,7 +223,7 @@ modTest('with settings the mod rejects there is no settings line', { options: { 
 for (const [level, first] of [
   ['nope', BAD('nope')],
   ['info', `info: ${SETTINGS}, log level info`],
-]) {
+] as const) {
   modTest(`the read at ${level} writes its line before the mod introduces itself`, LIVE, async ($, on) => {
     const seen = withMod(on)
     seen.refuse = 'taken'
@@ -576,7 +576,8 @@ modTest('a pause that cannot be read is a warning once, as the line the person g
     await endTurn($, 'answer', { turnId: turn })
     await stop($)
   }
-  expect(diagnostic(seen.logs)).toEqual(['warn: could not check for a handoff'])
+  // The engine's stop names a transcript this test has no file for; that warning is the handoff after a pause's, not this one's.
+  expect(diagnostic(seen.logs).filter(l => !l.startsWith('warn: idle:'))).toEqual(['warn: could not check for a handoff'])
 })
 
 modTest('settings the mod rejects are a warning with their number', { options: { handoff_command: '/handoff', min_gap_turns: 2.5 } }, async ($, on) => {

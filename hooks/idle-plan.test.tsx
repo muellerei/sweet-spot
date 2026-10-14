@@ -1,0 +1,305 @@
+import { expect } from 'claude-code/testing'
+
+import { FIVE_TRANSCRIPT, HOUR_TRANSCRIPT, LIVE_IDLE, T, answer, band, idleLines, idleSession, modelSwitch, shown, typeKey } from './idle-support'
+import {
+  answered,
+  endTurn,
+  hostWith,
+  MINUTE,
+  modelForkAnswer,
+  modTest,
+  runRelay,
+  sessionWith,
+  startTurn,
+  stop,
+  typeInto,
+  type TestEngine,
+} from './test-support'
+
+// The handoff after a long pause, up to the handoff written: planned at the end of each answer, written 55 minutes after the last request
+// while the cache is still warm, and nothing more. The session stays as it is; what happens when the person comes back is idle-return.
+
+// The first message: the line that tells the fresh session what it is, and the handoff.
+const PREPARED = 'info: idle: handoff prepared, 100 characters'
+
+modTest('55 minutes after the last request the mod writes a handoff, quietly, and leaves the session as it is', LIVE_IDLE, async ($, on) => {
+  const { seen, world, host } = idleSession(on)
+  await answer($)
+  await world.clock.advance(55 * MINUTE - 1)
+  expect(host.modelForkPrompts).toHaveLength(0)
+  await world.clock.advance(1)
+  expect(host.modelForkPrompts).toHaveLength(1)
+  expect(host.steps).toEqual([])
+  expect(seen.toasts).toEqual([])
+  expect(idleLines(seen.logs)).toEqual(['debug: idle: planned in 55 min', PREPARED])
+})
+
+modTest('a pause whose reads fail still plans the step, from a read of its own', LIVE_IDLE, async ($, on) => {
+  const { seen, world, host } = idleSession(on)
+  world.during['agent.list'] = async () => {
+    throw new Error('agents unreadable')
+  }
+  await answer($)
+  expect(idleLines(seen.logs)).toContain('debug: idle: planned in 55 min')
+  await world.clock.advance(55 * MINUTE)
+  expect(host.modelForkPrompts).toHaveLength(1)
+})
+
+modTest('a new turn before then ends the pause, and its own end plans again from its last request', LIVE_IDLE, async ($, on) => {
+  const { world, host } = idleSession(on)
+  await answer($)
+  await world.clock.advance(30 * MINUTE)
+  await answer($, 't2', {}, false)
+  await world.clock.advance(54 * MINUTE)
+  expect(host.modelForkPrompts).toHaveLength(0)
+  await world.clock.advance(MINUTE)
+  expect(host.modelForkPrompts).toHaveLength(1)
+})
+
+// What ends a pause besides a new turn, with the line `endPause` gives for it.
+const sessionEnd = ($: TestEngine) => $.session.end({ sessionId: 'old', reason: 'clear' } as never)
+const compact = ($: TestEngine) => $.session.compact({ trigger: 'manual', messages: [] } as never)
+const ENDS = [
+  ['the end of the session', sessionEnd, 'the session ended'],
+  ['a compact of the main loop', compact, 'a compact'],
+  ['a change of model', modelSwitch, 'a change of model'],
+] as const
+
+for (const [name, end] of ENDS) {
+  modTest(`${name} ends the pause: nothing is written`, LIVE_IDLE, async ($, on) => {
+    const { world, host } = idleSession(on)
+    await answer($)
+    await world.clock.advance(10 * MINUTE)
+    await end($)
+    await world.clock.advance(60 * MINUTE)
+    expect(host.modelForkPrompts).toHaveLength(0)
+  })
+}
+
+for (const [name, end] of ENDS) {
+  modTest(`${name} after the handoff is written drops it, and its band never comes`, LIVE_IDLE, async ($, on) => {
+    const { seen, world, host } = idleSession(on)
+    const ui = await band($)
+    await answer($)
+    await world.clock.advance(55 * MINUTE)
+    expect(idleLines(seen.logs)).toContain(PREPARED)
+    await end($)
+    const before = host.steps.length
+    await world.clock.advance(70 * MINUTE)
+    expect(await shown(ui)).toBeUndefined()
+    await typeInto($, 'hello again')
+    await world.clock.settle()
+    expect(host.steps.slice(before)).toEqual(['submit hello again'])
+  })
+}
+
+// A compact or a change of model the person starts while the handoff is being written (slash commands go through) ends the pause too:
+// the handoff written for the context before it goes.
+for (const [name, end, why] of ENDS.slice(1)) {
+  modTest(`${name} while the handoff is written ends the pause: the handoff goes`, LIVE_IDLE, async ($, on) => {
+    const { seen, world, host } = idleSession(on)
+    await answer($)
+    host.during['model.fork'] = async () => void (await end($))
+    await world.clock.advance(55 * MINUTE)
+    expect(host.modelForkPrompts).toHaveLength(1)
+    expect(idleLines(seen.logs)).toContain(`debug: idle: pause over, ${why}, the handoff written is dropped`)
+    expect(idleLines(seen.logs)).not.toContain(PREPARED)
+    const before = host.steps.length
+    await world.clock.advance(70 * MINUTE)
+    await typeInto($, 'hello again')
+    await world.clock.settle()
+    expect(host.steps.slice(before)).toEqual(['submit hello again'])
+  })
+}
+
+// A turn that is not the mod's own starts while the handoff is written: a slash command that starts one (it goes through), or the message
+// held meanwhile, whose turn starts as it is put in (the submit settles once its turn started). It ends the pause, and the handoff goes.
+modTest('a turn that starts while the handoff is written ends the pause: what is written goes', LIVE_IDLE, async ($, on) => {
+  const { seen, world, host } = idleSession(on)
+  await answer($)
+  host.during['model.fork'] = async () => void (await startTurn($, 't2'))
+  await world.clock.advance(55 * MINUTE)
+  expect(idleLines(seen.logs)).toContain('debug: idle: pause over, a turn started, the handoff written is dropped')
+  expect(idleLines(seen.logs)).not.toContain(PREPARED)
+})
+
+modTest('the turn of a message held while the handoff is written ends the pause: the handoff written goes', LIVE_IDLE, async ($, on) => {
+  const { seen, world, host } = idleSession(on)
+  await answer($)
+  host.during['model.fork'] = async () => void (await typeInto($, 'meanwhile'))
+  host.during['submit'] = async () => void (await startTurn($, 't2'))
+  await world.clock.advance(55 * MINUTE)
+  expect(host.steps).toEqual(['submit meanwhile'])
+  expect(idleLines(seen.logs)).toContain('debug: idle: pause over, a turn started, the handoff written is dropped')
+  await world.clock.advance(70 * MINUTE)
+  await typeInto($, 'hello again')
+  await world.clock.settle()
+  expect(host.steps).toEqual(['submit meanwhile', 'submit hello again'])
+})
+
+modTest('typing and slash commands do not end the pause', LIVE_IDLE, async ($, on) => {
+  const { world, host } = idleSession(on)
+  await answer($)
+  await typeKey($, 'a')
+  await world.clock.advance(55 * MINUTE)
+  expect(host.modelForkPrompts).toHaveLength(1)
+})
+
+const notPlanned: [string, object, Parameters<typeof hostWith>[1], Parameters<typeof sessionWith>[1], object, string][] = [
+  ['with the setting off', { idle_handoff: false }, {}, {}, {}, 'switched off'],
+  ['with a five-minute cache', {}, { files: { [T]: FIVE_TRANSCRIPT } }, {}, {}, 'cache lifetime 5m'],
+  ['below the baseline plus 30000', {}, {}, { tokens: 81_002 }, {}, 'context 81002 tokens below 81003'],
+  ['below a lower bound set', { idle_handoff_min_tokens: 150_000 }, {}, {}, {}, 'context 120000 tokens below 150000'],
+  ['with a timer of the session set', {}, {}, {}, { session_crons: [{ recurring: true }] }, 'a timer of the session is set'],
+  ['with a one-shot timer of the session set', {}, {}, {}, { session_crons: [{ recurring: false }] }, 'a timer of the session is set'],
+]
+for (const [name, options, host, world, stopInput, why] of notPlanned) {
+  modTest(`nothing is planned ${name}`, { options: { dry_run: false, ...options } }, async ($, on) => {
+    const { seen, world: w, host: h } = idleSession(on, host, world)
+    await answer($, 't1', stopInput)
+    await w.clock.advance(60 * MINUTE)
+    expect(h.modelForkPrompts).toHaveLength(0)
+    expect(idleLines(seen.logs)).toEqual([`debug: idle: not planned, ${why}`])
+  })
+}
+
+modTest('a background task running when it is due does not hold the handoff back: it reports into this session', LIVE_IDLE, async ($, on) => {
+  const { world, host } = idleSession(on)
+  await answer($, 't1', { background_tasks: [{ status: 'running' }] })
+  await world.clock.advance(55 * MINUTE)
+  expect(host.modelForkPrompts).toHaveLength(1)
+})
+
+// The handoff missed the cache here, so the touch stays with the main loop: what a subagent asked in the meantime does not move it.
+modTest("a subagent's request is no touch: the cache counts as expired an hour after the main loop's", LIVE_IDLE, async ($, on) => {
+  const missed = {
+    ...modelForkAnswer('goal: finish the parser'),
+    usage: { input_tokens: 3, output_tokens: 900, cache_read_input_tokens: 0, cache_creation_input_tokens: 120_000 },
+  }
+  const { world, host } = idleSession(on, { modelFork: missed })
+  await answer($)
+  await world.clock.advance(30 * MINUTE)
+  for await (const _ of $.turn.step({ turnId: 's1', index: 0, model: 'claude', messageCount: 1, agentId: 'a1' } as never));
+  await world.clock.advance(40 * MINUTE)
+  await typeInto($, 'hello again')
+  await world.clock.settle()
+  expect(host.steps[0]).toBe('run clear')
+})
+
+// A countdown running when it is due holds the handoff back too (the check is in the step), but no test reaches it: a countdown lasts at most
+// 60 seconds and begins only at a pause, which is 55 minutes before the step, and a new turn ends the pause.
+modTest('a handover running when it is due holds the handoff back', LIVE_IDLE, async ($, on) => {
+  const { seen, world, host } = idleSession(on, { modelFork: 'hang' })
+  await answer($)
+  await world.clock.advance(54 * MINUTE)
+  await answered(runRelay($, 'asap'))
+  // The handover of asap at rest begins a moment after its answer, and its fork never answers.
+  await world.clock.advance(1_000)
+  expect(host.modelForkPrompts).toHaveLength(1)
+  await world.clock.advance(MINUTE)
+  expect(host.modelForkPrompts).toHaveLength(1)
+  expect(idleLines(seen.logs)).toContain('debug: idle: not prepared, a handover runs')
+})
+
+modTest('a subagent running when it is due holds the handoff back', LIVE_IDLE, async ($, on) => {
+  const { seen, world, host } = idleSession(on)
+  await answer($)
+  world.agents = [{ status: 'running' }]
+  await world.clock.advance(55 * MINUTE)
+  expect(host.modelForkPrompts).toHaveLength(0)
+  expect(idleLines(seen.logs)).toContain('debug: idle: not prepared, a subagent runs')
+})
+
+modTest('the transcript is read again when it is due: a cache that turned to five minutes holds it back', LIVE_IDLE, async ($, on) => {
+  const { seen, world, host } = idleSession(on)
+  await answer($)
+  host.files[T] = FIVE_TRANSCRIPT
+  await world.clock.advance(55 * MINUTE)
+  expect(host.modelForkPrompts).toHaveLength(0)
+  expect(idleLines(seen.logs)).toContain('debug: idle: not prepared, cache lifetime 5m')
+})
+
+modTest('a transcript that cannot be read when it is due is warned of once in the session', LIVE_IDLE, async ($, on) => {
+  const { seen, world, host } = idleSession(on, { sizes: { [T]: 5_000_000 }, tails: { [T]: HOUR_TRANSCRIPT } })
+  await answer($)
+  host.tails = {}
+  await world.clock.advance(55 * MINUTE)
+  await answer($, 't2', {}, false)
+  host.files = {}
+  await world.clock.advance(55 * MINUTE)
+  expect(seen.logs.filter(l => l === 'warn: idle: the transcript could not be read')).toHaveLength(1)
+})
+
+modTest('a handoff the model cannot write is said once, and the session goes on as is', LIVE_IDLE, async ($, on) => {
+  const { seen, world, host } = idleSession(on, { modelFork: { isAnswered: false, reason: 'nothing-to-fork' } })
+  await answer($)
+  await world.clock.advance(55 * MINUTE)
+  expect(seen.toasts).toEqual([
+    'could not prepare the idle handoff (the mod could not write the handoff: there is no conversation yet to write a handoff from), the session goes on as is',
+  ])
+  expect(host.steps).toEqual([])
+  expect(idleLines(seen.logs)).toContain('warn: idle: preparing failed (stage model-fork)')
+})
+
+modTest('in a dry run the mod only says it would prepare', { options: { dry_run: true } }, async ($, on) => {
+  const { seen, world, host } = idleSession(on)
+  await answer($)
+  await world.clock.advance(55 * MINUTE)
+  expect(host.modelForkPrompts).toHaveLength(0)
+  expect(idleLines(seen.logs)).toContain('info: idle: would prepare')
+})
+
+modTest('what is typed while the handoff is written is held, and goes into the session once it is written', LIVE_IDLE, async ($, on) => {
+  const { world, host } = idleSession(on)
+  await answer($)
+  let held: unknown
+  host.during['model.fork'] = async () => {
+    held = await typeInto($, 'are you there?')
+  }
+  await world.clock.advance(55 * MINUTE)
+  expect(held).toEqual({ drop: 'sweet-spot: your message is held for a moment and goes in right after' })
+  expect(host.steps).toEqual(['submit are you there?'])
+})
+
+modTest('the end of an answer while the handoff is written is no pause and plans nothing', LIVE_IDLE, async ($, on) => {
+  const { seen, world, host } = idleSession(on)
+  await answer($)
+  host.during['model.fork'] = async () => {
+    await stop($, { transcript_path: T } as never)
+    await endTurn($, 'answer', { turnId: 'x' })
+  }
+  await world.clock.advance(55 * MINUTE)
+  expect(seen.logs).toContain('debug: stop while handing over, not a pause')
+  expect(idleLines(seen.logs).filter(l => l.includes('planned in'))).toHaveLength(1)
+})
+
+modTest('a handoff written from a cache it missed leaves the touch where it was', LIVE_IDLE, async ($, on) => {
+  const missed = {
+    isAnswered: true,
+    text: 'goal: finish the parser',
+    usage: { input_tokens: 3, output_tokens: 900, cache_read_input_tokens: 1_000, cache_creation_input_tokens: 119_000 },
+  }
+  const { seen, world } = idleSession(on, { modelFork: missed })
+  await answer($)
+  await world.clock.advance(55 * MINUTE)
+  expect(idleLines(seen.logs)).toContain('debug: idle: the handoff missed the cache, the touch stays')
+})
+
+modTest('a turn that starts and ends without an answer (Esc) ends the pause and plans nothing new', LIVE_IDLE, async ($, on) => {
+  const { world, host } = idleSession(on)
+  await answer($)
+  await world.clock.advance(10 * MINUTE)
+  await startTurn($, 't2')
+  await endTurn($, 'aborted', { turnId: 't2' })
+  await world.clock.advance(60 * MINUTE)
+  expect(host.modelForkPrompts).toHaveLength(0)
+})
+
+modTest("a turn of the person's that starts while the step reads is seen: nothing is written", LIVE_IDLE, async ($, on) => {
+  const { seen, world, host } = idleSession(on)
+  await answer($)
+  world.during['agent.list'] = async () => void (await startTurn($, 't2'))
+  await world.clock.advance(55 * MINUTE)
+  expect(host.modelForkPrompts).toHaveLength(0)
+  expect(idleLines(seen.logs)).toContain('debug: idle: not prepared, a turn runs')
+})

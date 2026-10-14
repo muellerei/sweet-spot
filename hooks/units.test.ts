@@ -23,6 +23,8 @@ test('configOf: nothing set gives the defaults, and the defaults are these', asy
     handoffMethod: 'internal-handoff',
     handoffFallback: 'builtin-compact',
     handoffCommand: '',
+    idleHandoff: true,
+    idleHandoffMinTokens: 0,
   }
   expect(DEFAULTS).toEqual(expected)
   expect(configOf({})).toEqual({ ok: true, config: expected })
@@ -37,6 +39,8 @@ test('configOf: valid values are taken as they are', async () => {
     later_tokens: 1,
     countdown_seconds: 0,
     handoff_command: 'claude-mem:handoff',
+    idle_handoff: false,
+    idle_handoff_min_tokens: 90_000,
   })
   expect(result).toEqual({
     ok: true,
@@ -50,8 +54,18 @@ test('configOf: valid values are taken as they are', async () => {
       handoffMethod: 'internal-handoff',
       handoffFallback: 'builtin-compact',
       handoffCommand: 'claude-mem:handoff',
+      idleHandoff: false,
+      idleHandoffMinTokens: 90_000,
     },
   })
+})
+
+test('configOf: idle_handoff is true or false, idle_handoff_min_tokens a whole number of tokens, 0 or more', async () => {
+  expect(rejected({ idle_handoff: 'yes' })).toEqual(['idle_handoff: "yes" is not true or false'])
+  expect(rejected({ idle_handoff_min_tokens: -1 })).toEqual(['idle_handoff_min_tokens: -1 is below 0'])
+  expect(rejected({ idle_handoff_min_tokens: 2.5 })).toEqual(['idle_handoff_min_tokens: 2.5 is not a whole number'])
+  expect(rejected({ idle_handoff_min_tokens: '80000' })).toEqual(['idle_handoff_min_tokens: "80000" is not a number'])
+  expect(configOf({ idle_handoff_min_tokens: 0 })).toMatchObject({ ok: true, config: { idleHandoffMinTokens: 0 } })
 })
 
 test('configOf: threshold must be a finite number of at least 130000, and is rejected with its value and reason, never replaced', async () => {

@@ -53,6 +53,18 @@ until a pause is below the threshold again. The first tool call of the main loop
 **Afterwards.** What was typed during the handoff goes in after it (`release`). A message that did not reach the fresh session stays in
 the store, and `/sweet-spot redeliver` submits it, into the session the `/clear` made and no other (`redeliver`).
 
+**After a long pause.** The idle handoff ([idle-handoff.md](idle-handoff.md)) has its pure part in `idle-handoff.ts`: how much of the
+transcript to read (`readPlan`), the cache lifetime and the baseline found in it, the lower bound (`floorOf`), whether to plan
+(`planVerdict`), when the step is due (`prepareDueAt`), whether to write when it comes (`fireVerdict`), and how a return is judged
+(`returnVerdict`). `register.tsx` reads the transcript at the end of the first turn of each session (`readIdle`), takes the touch and the
+baseline from `turn.step`, plans at the pause after `atPause` (`planIdle`) and writes when the step comes (`prepareIdle`), through
+`prepare` in `relay.ts`: the user's command or the internal way, never a compact, and nothing delivered. While it writes, `preparing` in
+`state.ts` holds what `handingOver` holds (`underWay`). The first message after it takes the handoff at once (`claim` in `hold.ts`), and
+`comeBack` judges by the clock; a switch delivers through `deliverReturn`, the same `deliver` as every handoff. Every turn, the end of
+the session, a compact and a change of model end the pause (`endPause`); while the handoff is written, a compact or a change of model
+marks it (`endedWhilePreparing`) and what is written is dropped, as does any turn but the command's own (a slash command, or the held
+message, whose turn starts while it is put in). `statusTail` in `status.ts` says where it stands.
+
 ## Why it is split this way
 
 - **A pure judge.** `decide` knows nothing of the host, so every rule of when to hand over is tested with plain values.
@@ -96,7 +108,16 @@ Each is explained in a comment at the place named.
 - The handoff is in the store before `/clear`, until the fresh session has it (`deliver`).
 - The same session id after `/clear` means the handoff failed (`deliver`).
 - The minimum gap ends after minutes or turns, and holds after a failed attempt too (`withinGap` in `decide.ts`).
-- A handler changes the state first, then reads the log level, then logs (`register`).
+- A handler changes the state first, then reads the log level, then logs (`register`). `endPause` therefore only changes the state and
+  gives its line back to the caller. The one exception is `turn.step`: it runs at every request, so it logs by the level the turn's start
+  read instead of reading it again.
+- The idle handoff is taken at once: the first message after it was written takes it before any wait (`claim` in `hold.ts`), so a
+  second message never sees it. Whether the cache is cold is read off the clock (`returnVerdict`), never from a mark a timer set, which
+  sleep delays.
+- The step that writes the idle handoff does all its reads first, then every check and `preparing` in one go with no wait between
+  (`prepareIdle`), so that a turn of the person's that starts meanwhile is seen and its events are not taken for the mod's own.
+- `preparing` and `returning` hold what `handingOver` holds (`underWay` in `state.ts`): no pause is judged, nothing is planned, and
+  typing is held.
 - The value a pause judges at, the answers of `later` and `status` and the pause line all come from `thresholdInForce` in `decide.ts`: capped at the
   brake of the window as it is at that pause, never below the threshold in force.
 - The command is `immediate`, so `later` typed during an answer comes before the pause that ends it is judged (host-behaviour,

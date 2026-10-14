@@ -1,6 +1,7 @@
 import { expect } from 'claude-code/testing'
 
 import { ASK_FOR_PATH } from './handoff'
+import { LIVE_IDLE, T, answer, idleSession, step } from './idle-support'
 import {
   answered,
   hostWith,
@@ -15,6 +16,10 @@ import {
   withMod,
   type SessionWorld,
   type TestEngine,
+  endTurn,
+  MINUTE,
+  stop,
+  typeInto,
 } from './test-support'
 
 // `/sweet-spot status` says where the context stands against the threshold and the emergency brake, and changes nothing. The window is
@@ -33,7 +38,7 @@ modTest('status says the context against the window, where the handover comes an
 })
 
 const USAGE =
-  'use `/sweet-spot status` to see where the context stands, `/sweet-spot later [tokens]` to move the next handover back, `/sweet-spot asap` to hand over at the next pause, or `/sweet-spot redeliver` to submit again the handoff that did not reach the fresh session'
+  'use `/sweet-spot status` to see where the context stands, `/sweet-spot later [tokens]` to move the next handover back or drop the idle handoff, `/sweet-spot asap` to hand over at the next pause, or `/sweet-spot redeliver` to submit again the handoff that did not reach the fresh session'
 
 for (const args of ['status 50k', 'STATUS', 'Status', 'statusx', 'status  later']) {
   modTest(`"${args}" is no status: the command tells what it does`, LIVE, async ($, on) => {
@@ -194,4 +199,67 @@ modTest('status answers while an answer is running, and does not wait for its pa
   await startSession($)
   await startTurn($, 't1')
   expect(await status($, world, 134_000)).toBe('context 134000 of 1000000 tokens, hands over at 200000, emergency brake at 350000')
+})
+
+// The handoff after a long pause, after what the status said before: planned, written and warm until a time of day, or written and cold.
+const BASE = 'context 120000 of 1000000 tokens, hands over at 200000, emergency brake at 350000'
+const hhmm = (ms: number) => new Date(ms).toTimeString().slice(0, 5)
+
+modTest('status names the idle handoff planned, in whole minutes rounded up', LIVE_IDLE, async ($, on) => {
+  const { world } = idleSession(on)
+  await answer($)
+  await world.clock.advance(14 * MINUTE + 30_000)
+  expect(await answered(runRelay($, 'status'))).toBe(`${BASE}, idle handoff ready in 41 min`)
+  await world.clock.advance(40 * MINUTE + 29_999)
+  expect(await answered(runRelay($, 'status'))).toBe(`${BASE}, idle handoff ready in 1 min`)
+})
+
+modTest('status names the idle handoff written, with the time its cache runs out, and once that has passed, without', LIVE_IDLE, async ($, on) => {
+  const { world } = idleSession(on)
+  await answer($)
+  await world.clock.advance(55 * MINUTE)
+  const expires = hhmm(world.clock.now() + 60 * MINUTE)
+  expect(await answered(runRelay($, 'status'))).toBe(`${BASE}, idle handoff ready, goes with your next message after ${expires}`)
+  await world.clock.advance(60 * MINUTE)
+  expect(await answered(runRelay($, 'status'))).toBe(`${BASE}, idle handoff ready, goes with your next message`)
+})
+
+modTest('status changes nothing about the idle handoff: the next message still takes it', LIVE_IDLE, async ($, on) => {
+  const { world, host } = idleSession(on)
+  await answer($)
+  await world.clock.advance(115 * MINUTE)
+  await answered(runRelay($, 'status'))
+  await typeInto($, 'hello again')
+  await world.clock.settle()
+  expect(host.steps[0]).toBe('run clear')
+})
+
+modTest('status names asap before the idle handoff', LIVE_IDLE, async ($, on) => {
+  const { world } = idleSession(on)
+  await answer($)
+  // A background task holds the handover of asap back, and does not hold back the idle handoff.
+  await startTurn($, 't2')
+  await step($, 't2')
+  await runRelay($, 'asap')
+  await stop($, { transcript_path: T, background_tasks: [{ status: 'running' }] } as never)
+  await endTurn($, 'answer', { turnId: 't2' })
+  expect(await answered(runRelay($, 'status'))).toBe(`${BASE}, asap: hands over at the next pause, idle handoff ready in 55 min`)
+})
+
+for (const [name, options, tokens] of [
+  ['off', { idle_handoff: false }, 120_000],
+  ['below the lower bound', {}, 81_002],
+] as const) {
+  modTest(`status says nothing of the idle handoff with it ${name}`, { options: { dry_run: false, ...options } }, async ($, on) => {
+    const { world } = idleSession(on, {}, { tokens })
+    await answer($)
+    expect(await answered(runRelay($, 'status'))).toBe(`context ${tokens} of 1000000 tokens, hands over at 200000, emergency brake at 350000`)
+  })
+}
+
+modTest('in a dry run status names the handoff it would have written', { options: { dry_run: true } }, async ($, on) => {
+  const { world } = idleSession(on)
+  await answer($)
+  await world.clock.advance(115 * MINUTE)
+  expect(await answered(runRelay($, 'status'))).toBe(`dry run, only reports: ${BASE}, idle handoff ready, goes with your next message`)
 })

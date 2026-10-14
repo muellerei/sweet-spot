@@ -70,6 +70,8 @@ export type World = {
   draft: string
   // Run while a read is under way, for what happens in the middle of one: the step is `usage`, `agent.list`, `surfaces` or `prompt.read`.
   during: Record<string, () => Promise<void>>
+  // System sleep: how far the time the mod reads has jumped past the clock in memory, which fires the timers and did not move.
+  slept: number
 }
 
 // What happens in the middle of a step happens once; a later read of the same kind goes through.
@@ -93,6 +95,7 @@ export const sessionWith = (on: TestOn, world: Partial<World> = {}) => {
     surfaces: ['terminal'],
     draft: '',
     during: {},
+    slept: 0,
     ...world,
   }
   on('session.usage', async () => {
@@ -121,12 +124,33 @@ export const sessionWith = (on: TestOn, world: Partial<World> = {}) => {
   // An edit as the editor makes it: the span from `start` to `end` replaced by what was typed, the cursor after it. `draft` stays what the
   // test set: the key of a band button raises an edit and leaves the prompt empty (docs/host-behaviour.md, Commands).
   on('prompt.edit', async (_, e) => ({ text: e.text.slice(0, e.start) + e.inputText + e.text.slice(e.end), cursor: e.start + e.inputText.length }))
+  // A fill as the box takes it: over the draft, after it, or at its end for the cursor, which a test leaves there.
+  on('prompt.fill', async (_, e) => {
+    w.draft = e.mode === 'replace' ? e.text : w.draft + e.text
+    return { isFilled: true } as never
+  })
   // The end of the session (exit, /clear, resume), which the host echoes.
   on('session.end', async (_, e) => ({ sessionId: e.sessionId }))
   on('classic.Stop', async () => (w.block === undefined ? {} : { block: w.block }))
+  // The classic events of a session the mod also watches, answered with nothing beneath.
+  on('classic.SessionStart', async () => ({}))
+  on('classic.UserPromptSubmit', async () => ({}))
+  on('classic.PostModelSwitch', async () => ({}))
+  // A permission prompt nobody beneath answers: the prompt shows.
+  on('classic.PermissionRequest', async () => ({}))
   on('turn.start', async (_, e) => ({ turnId: e.turnId }))
   on('turn.complete', async () => ({ text: '' }))
-  return Object.assign(w, { clock: mock.clock(on) })
+  // The clock in memory, with the time it answers moved on by what the session slept.
+  const sleptOn = ((event: string, ...rest: unknown[]) => {
+    if (event !== 'clock.now') return (on as (...a: unknown[]) => unknown)(event, ...rest)
+    const handler = rest[rest.length - 1] as (...a: unknown[]) => Promise<{ value: number }>
+    const later = async (...a: unknown[]) => {
+      const r = await handler(...a)
+      return { ...r, value: r.value + w.slept }
+    }
+    return (on as (...a: unknown[]) => unknown)(event, ...rest.slice(0, -1), later)
+  }) as TestOn
+  return Object.assign(w, { clock: mock.clock(sleptOn) })
 }
 
 type StopInput = { background_tasks?: { status: string }[]; session_crons?: { recurring: boolean }[]; agent_id?: string }
@@ -205,6 +229,13 @@ export type Host = {
   // What the store holds, and the store calls that fail, as `<op>:<key>` (`set:failure`; `*` for any key).
   store: Map<string, unknown>
   failStore: string[]
+  // Files whose size `fs.stat` answers with instead of their length, for a transcript too large to read whole.
+  sizes: Record<string, number>
+  // What `process.run` answers for `tail -c <n> <path>`, by path; a path not here fails, as on a machine with no `tail`. Each run is listed in `runs`.
+  tails: Record<string, string>
+  runs: string[][]
+  // The project folder, as `$.session.cwd()` answers it.
+  cwd: string
   // Run while a step is under way, for what a person does in the middle of a handoff: the step is `run <command>`, `model.fork`, `submit` or `set <store key>`.
   // `read log level` holds up one read of the log level, for a read that comes back after a later one.
   during: Record<string, () => Promise<void>>
@@ -238,6 +269,10 @@ export const hostWith = (on: TestOn, host: Partial<Host> = {}) => {
     clearKeepsSession: false,
     store: new Map(),
     failStore: [],
+    sizes: {},
+    tails: {},
+    runs: [],
+    cwd: '/work',
     during: {},
     ...host,
   }
@@ -269,6 +304,21 @@ export const hostWith = (on: TestOn, host: Partial<Host> = {}) => {
     if (text === undefined) return { deny: `no such file: ${e.path}` }
     return { value: text } as never
   })
+  // Assumed: a file the test does not name does not exist.
+  on('fs.stat', async (_, e) => {
+    const text = h.files[e.path]
+    if (text === undefined) return { deny: `no such file: ${e.path}` }
+    return { value: { kind: 'file', size: h.sizes[e.path] ?? text.length, mtimeMs: 0, isLink: false } } as never
+  })
+  // Only `tail -c <n> <path>` is known; anything else, or a path with no end set, fails as a missing program does.
+  on('process.run', async (_, e) => {
+    h.runs.push([...e.argv])
+    const [program, flag, , path] = e.argv
+    const end = program === 'tail' && flag === '-c' && path !== undefined ? h.tails[path] : undefined
+    if (end === undefined) return { deny: `spawn ${program} ENOENT` }
+    return { value: { exitCode: 0, stdout: end, stderr: '', isStdoutTruncated: false } } as never
+  })
+  on('session.cwd', async () => ({ value: h.cwd }))
   // Assumed: every entry is a file; the host's listing also tells directories and links apart, which the mod does not read.
   on('fs.list', async () => ({ value: h.listing.map(l => ({ name: l.name, kind: 'file', size: l.size ?? 1, mtimeMs: l.mtimeMs, isLink: false })) }) as never)
   // Assumed: `env.get` answers a variable by its name; HOME, TMPDIR and the log level are asked for, and anything else gets the temp
@@ -363,6 +413,9 @@ export const commandTurnEnds = async ($: TestEngine, world: SessionWorld, answer
   await endTurn($, 'answer', { answer, turnId })
   await world.clock.settle()
 }
+
+// One edit in the prompt, as the host raises it. The engine raises `prompt.edit`, though its types for a test leave it out.
+export const editPrompt = ($: TestEngine, e: object) => ($.prompt as unknown as { edit: (e: object) => Promise<unknown> }).edit(e)
 
 // A person typing into the prompt.
 export const typeInto = ($: TestEngine, text: string, extra: object = {}) =>

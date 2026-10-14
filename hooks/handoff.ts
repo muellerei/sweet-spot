@@ -44,8 +44,12 @@ export const unfit = (entry: Entry | undefined, file: string, since: number): { 
 }
 
 // The first message with what the person typed while the handoff ran, so that nothing of it has to be sent on its own.
-export const withHeld = (message: string, held: readonly string[]): string =>
-  held.length === 0 ? message : `${message}\n\nTyped while the handoff ran:\n${held.join('\n\n')}`
+const TYPED_MEANWHILE = 'Typed while the handoff ran:'
+// The message that came back after a long pause, and what followed it while the switch ran.
+export const NEXT_MESSAGE = "The person's next message:"
+
+export const withHeld = (message: string, held: readonly string[], heading = TYPED_MEANWHILE): string =>
+  held.length === 0 ? message : `${message}\n\n${heading}\n${held.join('\n\n')}`
 
 export const firstMessage = (handoff: string): string => `Handoff from the previous session. Read it and carry on with the next step.\n\n${handoff}`
 

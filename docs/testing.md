@@ -14,7 +14,9 @@ from three layers, each a function that registers answers with `on`:
   (`seen.status`, `undefined` where it cleared one). It also answers `ui.render` with an empty band, as the host draws one with nothing
   of the mod's in it.
 - `sessionWith` is what the mod reads at a stop: context size, window, turn count, running agents, rate limits. It also brings a clock
-  (`mock.clock`), so a test moves time on and lets what is due run (`clock.advance`, `clock.settle`). It answers where the session draws
+  (`mock.clock`), so a test moves time on and lets what is due run (`clock.advance`, `clock.settle`). `world.slept` stands for system
+  sleep: it moves the time the mod reads (`$.clock.now`) on by that much while the clock in memory, which fires the timers, stays where
+  it was (`idle-sleep.test.tsx`). It answers where the session draws
   (`surfaces`, `['terminal']` by default) and what the prompt holds (`draft`, which a test sets with no `prompt.edit`, as the history, Tab
   or another mod fill the prompt). It answers `prompt.edit` as the editor does, with the text after the splice, and `session.end`.
   `world.reads` lists the reads of the surfaces and the prompt, so a test can say that something was not asked at all.
@@ -25,9 +27,9 @@ from three layers, each a function that registers answers with `on`:
   after Esc at a permission prompt.
 
 On top sit the moments a test is about: `pause` (an answer ends), `reachThreshold` (a pause past the threshold, with the handoff under
-way), `commandTurnEnds` (the command's turn ends with an answer), `typeInto` (a person types), `runRelay` (the mod's command) and
-`compactByHand` (a compact with trigger `manual`, the step `compact manual`, answered with a compaction unless `manualCompact` says
-otherwise).
+way), `commandTurnEnds` (the command's turn ends with an answer), `typeInto` (a person types), `editPrompt` (a key typed, through
+`prompt.edit`, which the test engine's types leave out), `runRelay` (the mod's command) and `compactByHand` (a compact with trigger
+`manual`, the step `compact manual`, answered with a compaction unless `manualCompact` says otherwise).
 
 Both layers take `during` steps: a function run once while a read or a step is under way, for what happens in the middle of it.
 `sessionWith` knows `usage`, `agent.list`, `surfaces` and `prompt.read`; `hostWith` knows `run <command>`, `model.fork`, `submit`,
