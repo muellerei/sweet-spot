@@ -2,15 +2,42 @@ import type { EngineInterface as Engine, Register } from 'claude-code'
 
 import { configOf, type Config, type ConfigResult } from './config'
 import { ASAP_OVER, RUNNING_UNKNOWN, asapFor } from './asap'
-import { activeTasks, brakeFor, brakeOf, decide, effectiveThreshold, laterAt, oneShots, shrunk, thresholdInForce, type Decision, type Snapshot } from './decide'
-import { hold } from './hold'
+import {
+  activeTasks,
+  brakeFor,
+  brakeOf,
+  busyReason,
+  decide,
+  effectiveThreshold,
+  laterAt,
+  oneShots,
+  shrunk,
+  thresholdInForce,
+  type Decision,
+  type Snapshot,
+} from './decide'
+import { claim, hold, HELD_MOMENT } from './hold'
 import { LATER_OVER, laterFor, tokensOf } from './later'
-import { statusFor } from './status'
+import { idlePart, statusFor, statusTail } from './status'
 import { checkOf, firstMethod, judgedLine } from './compact-check'
 import { bandOf, kindAt, moveBack, NOT_NOW_KEY, typed, type Countdown, type Start } from './countdown'
 import { begin, end, endedLine, press, surveyed, type Answer, type CountdownIo, type EndReason, type Expiry } from './countdown-flow'
 import { logger, refresh, shows } from './log'
-import { carryOut, endOfTurn, noteToolResult, redeliver, startOfTurn, throughMethods, why, type Failure, type Io, type Outcome } from './relay'
+import {
+  carryOut,
+  deliverReturn,
+  endOfTurn,
+  noteToolResult,
+  prepare,
+  redeliver,
+  release,
+  startOfTurn,
+  throughMethods,
+  why,
+  type Failure,
+  type Io,
+  type Outcome,
+} from './relay'
 import {
   ANSWER_RUNNING,
   COMPACTED,
@@ -22,6 +49,13 @@ import {
   REDELIVERED,
   usageFor,
   CANCELLED,
+  notPreparedLine,
+  switchedLine,
+  COLD_BAND,
+  IDLE_DROPPED,
+  ATTACHMENTS_STAY,
+  DRY_RUN_RETURN,
+  WORK_STAYS,
   CONTEXT_UNKNOWN,
   contextUnreadLine,
   decidedOf,
@@ -32,7 +66,23 @@ import {
   unregisteredLine,
 } from './report'
 import { endSeen, judgeable, stopSeen, turnStarted, type Stop } from './pairing'
-import { freshState, type State } from './state'
+import { freshIdle, freshState, underWay, type IdlePrepared, type State } from './state'
+import {
+  HOUR_MS,
+  baselineOfUsage,
+  fireVerdict,
+  firstBaselineOf,
+  floorOf,
+  idleFor,
+  isHit,
+  lifetimeOf,
+  planVerdict,
+  prepareDueAt,
+  readPlan,
+  returnVerdict,
+  TAIL_BYTES,
+  type InputUsage,
+} from './idle-handoff'
 
 // The host follows `$` only into functions declared at the top of this file, so what takes `$` lives here and not inside `register`.
 
@@ -62,7 +112,7 @@ const readLevel = async ($: Engine, settings: ConfigResult, state: State) => {
   const c = settings.config
   logTo($, state)(
     'info',
-    `settings: threshold ${c.threshold}, dry_run ${c.dryRun ? 'on' : 'off'}, min gap ${c.minGapMinutes} minutes and ${c.minGapTurns} turns, later_tokens ${c.laterTokens}, countdown_seconds ${c.countdownSeconds}, method ${c.handoffMethod}, fallback ${c.handoffFallback}${usesCommand(c) ? `, handoff command ${commandShown(c.handoffCommand)}` : ''}, log level ${state.logLevel}`,
+    `settings: threshold ${c.threshold}, dry_run ${c.dryRun ? 'on' : 'off'}, min gap ${c.minGapMinutes} minutes and ${c.minGapTurns} turns, later_tokens ${c.laterTokens}, countdown_seconds ${c.countdownSeconds}, idle_handoff ${c.idleHandoff ? 'on' : 'off'}, idle_handoff_min_tokens ${c.idleHandoffMinTokens}, method ${c.handoffMethod}, fallback ${c.handoffFallback}${usesCommand(c) ? `, handoff command ${commandShown(c.handoffCommand)}` : ''}, log level ${state.logLevel}`,
   )
 }
 
@@ -84,7 +134,9 @@ const sessionIo = ($: Engine, state: State): Io => ({
   home: () => $.env.get('HOME'),
   modelFork: async prompt => {
     const r = await $.model.fork({ prompt })
-    return r.isAnswered ? { isAnswered: true, text: r.text, usage: r.usage } : { isAnswered: false, reason: r.reason, ...('status' in r ? { status: r.status } : {}) }
+    return r.isAnswered
+      ? { isAnswered: true, text: r.text, usage: r.usage }
+      : { isAnswered: false, reason: r.reason, ...('status' in r ? { status: r.status } : {}) }
   },
   compact: async () => {
     const r = await $.session.compact()
@@ -130,7 +182,7 @@ const registerCommand = async ($: Engine, state: State) => {
     await $.command.register({
       name: COMMAND,
       description:
-        'Show where the context stands, move the next handover back, hand over at the next pause, or submit again the handoff that did not reach the fresh session',
+        'Show where the context stands, move the next handover back or drop the idle handoff, hand over at the next pause, or submit again the handoff that did not reach the fresh session',
       argumentHint: 'status | later [tokens] | asap | redeliver',
       immediate: true,
     })
@@ -178,7 +230,7 @@ const runRedelivery = async ($: Engine, state: State) => {
 // Without usable settings (`config` undefined) the mod never handed anything over, so there is nothing to redeliver.
 const redeliverText = ($: Engine, config: Config | undefined, args: string, state: State): string => {
   if (args.trim() !== 'redeliver') return usageFor(args)
-  if (state.handingOver) return HANDOFF_UNDER_WAY
+  if (underWay(state)) return HANDOFF_UNDER_WAY
   if (state.answerRunning) return ANSWER_RUNNING
   if (state.redelivering) return REDELIVER_UNDER_WAY
   if (state.pending === undefined || config === undefined) return NOTHING_TO_REDELIVER
@@ -199,8 +251,8 @@ const contextFor = async (
   verb: 'later' | 'asap',
 ): Promise<{ config: Config; tokens: number; window: number } | Answer> => {
   if (!settings.ok) return turnedDown(offLine(settings.errors), 'the settings are rejected', verb)
-  const underWay = () => state.handingOver || (verb === 'asap' && state.asapScheduled)
-  if (underWay()) return turnedDown(HANDOFF_UNDER_WAY, 'a handover is in progress', verb)
+  const busy = () => underWay(state) || (verb === 'asap' && state.asapScheduled)
+  if (busy()) return turnedDown(HANDOFF_UNDER_WAY, 'a handover is in progress', verb)
   let context: { tokens?: number; window: number }
   try {
     context = (await $.session.usage()).context
@@ -209,7 +261,7 @@ const contextFor = async (
   }
   // A pause may have started a handover during the read: a later handover or a mark set beside it would come too late for it and hold on in
   // the fresh session.
-  if (state.handingOver) return turnedDown(HANDOFF_UNDER_WAY, 'a handover is in progress', verb)
+  if (underWay(state)) return turnedDown(HANDOFF_UNDER_WAY, 'a handover is in progress', verb)
   if (context.tokens === undefined) return turnedDown(CONTEXT_UNKNOWN, 'the context size is unknown', verb)
   return { config: settings.config, tokens: context.tokens, window: context.window }
 }
@@ -218,6 +270,13 @@ const contextFor = async (
 const laterText = async ($: Engine, settings: ConfigResult, rest: string, state: State): Promise<Answer> => {
   const asked = tokensOf(rest)
   if ('error' in asked) return turnedDown(asked.error, 'not a number of tokens')
+  // Staying in this session after a long pause: the handoff written goes, and the rest is `later` as ever.
+  if (state.idle.prepared !== undefined) {
+    const over = endPause($, state, 'later')
+    const answer = await laterText($, settings, rest, state)
+    const lines: Answer['lines'] = over === undefined ? [] : [['debug', over]]
+    return { text: IDLE_DROPPED + answer.text, lines: [...lines, ...(answer.lines ?? [])] }
+  }
   const ready = await contextFor($, settings, state, 'later')
   if ('text' in ready) return ready
   const { config, tokens, window } = ready
@@ -249,7 +308,8 @@ const statusText = async ($: Engine, settings: ConfigResult, state: State): Prom
     return { text: contextUnreadLine(why(err)), lines: [['warn', 'status: could not read the context size']] }
   }
   const { tokens, window } = context
-  const text = statusFor(settings.config, window, tokens, laterAt(state.later, tokens))
+  const text =
+    statusFor(settings.config, window, tokens, laterAt(state.later, tokens)) + statusTail(state.asap !== undefined, idlePart(state.idle, await $.clock.now()))
   return {
     text: state.handingOver ? `${text}, a handover is in progress` : text,
     lines: [
@@ -307,7 +367,7 @@ const asapAtRest = async ($: Engine, config: Config, state: State, tokens: numbe
     return `${text}, ${RUNNING_UNKNOWN}`
   }
   // A turn or a handover may have started during the reads: the mark waits for its pause.
-  if (state.answerRunning || state.handingOver) return undefined
+  if (state.answerRunning || underWay(state)) return undefined
   if (snapshot === undefined) return `${text}, ${RUNNING_UNKNOWN}`
   const decision = decide(snapshot, config)
   if (decision.kind === 'none') return undefined
@@ -331,14 +391,37 @@ const asapStep = async ($: Engine, config: Config, state: State) => {
     const { tokens, window } = (await $.session.usage()).context
     if (tokens === undefined) return
     const snapshot = await restSnapshot($, state, tokens, window)
-    if (snapshot === undefined || state.asap === undefined || state.answerRunning || state.handingOver) return
+    if (snapshot === undefined || state.asap === undefined || state.answerRunning || underWay(state)) return
     const decision = decide(snapshot, config)
     if (decision.kind === 'defer') sayOnce($, state, decision.reason, reported(decision, config, state))
+    else if (decision.kind === 'act' && handOverPrepared($, state, snapshot.now, snapshot.turns)) return
     // The command's answer has said it is handing over; saying it again would double the line.
     else if (decision.kind !== 'none') beginHandover($, decision, config, state, snapshot.now, snapshot.turns, false)
   } catch (err) {
     sayUnread($, state, err)
   }
+}
+
+// The handoff written in a long pause, when `asap` is about to hand over: cold, it is the one handed over, since writing it anew on a cold
+// cache would read the whole context again; warm, it goes, and a fresh one carries everything up to now for little. True when it is handed over.
+const handOverPrepared = ($: Engine, state: State, now: number, turns: number): boolean => {
+  const prepared = state.idle.prepared
+  if (prepared?.kind !== 'real') return false
+  const log = logTo($, state)
+  if (now - (state.idle.touch ?? now) < HOUR_MS) {
+    const over = endPause($, state, 'asap with the cache warm')
+    if (over !== undefined) log('debug', over)
+    return false
+  }
+  // In one step with no wait, as a handover begins: the band and the timers go with the handoff.
+  const over = endPause($, state, 'asap takes the handoff written')
+  spendMarks($, state, now, turns)
+  state.handingOver = true
+  state.held = []
+  if (over !== undefined) log('debug', over)
+  log('info', 'idle: asap hands over the handoff written')
+  void returnInto($, state, prepared, undefined, () => HANDED_OVER)
+  return true
 }
 
 // A failed read is said once; the log carries the warning the first time only.
@@ -477,14 +560,17 @@ const spendMarks = ($: Engine, state: State, at: number, atTurns: number) => {
 
 const beginHandover = ($: Engine, judged: Countdown['decision'], config: Config, state: State, at: number, atTurns: number, announce = true) => {
   // A second source of a handover (a countdown that was still being set up when `asap` began one at rest) finds it under way.
-  if (state.handingOver) return logTo($, state)('debug', 'handover: already under way')
+  if (underWay(state)) return logTo($, state)('debug', 'handover: already under way')
   spendMarks($, state, at, atTurns)
   if (judged.kind === 'act') handOver($, judged, config, state, announce)
   else say($, reported(judged, config, state))
 }
 
-const atPause = async ($: Engine, e: Stop, config: Config, state: State) => {
-  const [{ context, rateLimits }, agents, turns, now] = await Promise.all([$.session.usage(), $.agent.list(), $.session.turns(), $.clock.now()])
+// What a pause reads of the host, in one go. Planning the idle handoff after it goes by the same context.
+const pauseRead = ($: Engine) => Promise.all([$.session.usage(), $.agent.list(), $.session.turns(), $.clock.now()])
+type PauseRead = Awaited<ReturnType<typeof pauseRead>>
+
+const atPause = async ($: Engine, e: Stop, config: Config, state: State, [{ context, rateLimits }, agents, turns, now]: PauseRead) => {
   // A context below where `later` was asked has shrunk (a compact, /clear): the later handover is over before `decide` judges.
   const kept = laterAt(state.later, context.tokens)
   const over = state.later !== undefined && kept === undefined
@@ -591,12 +677,16 @@ const notNow = async ($: Engine, settings: ConfigResult, state: State) => {
 }
 
 // The stop is a hook the turn waits on and can only be asked to go on: an error here is said once and the stop ends as if the mod were absent.
-const atPauseOrSay = async ($: Engine, e: Stop, config: Config, state: State) => {
+// The answer is what was read, or nothing where the read itself failed.
+const atPauseOrSay = async ($: Engine, e: Stop, config: Config, state: State): Promise<PauseRead | undefined> => {
+  let read: PauseRead | undefined
   try {
-    await atPause($, e, config, state)
+    read = await pauseRead($)
+    await atPause($, e, config, state, read)
   } catch (err) {
     sayUnread($, state, err)
   }
+  return read
 }
 
 // This is the one place that judges, once the stop and the end of its turn are both in; a stop whose turn ended otherwise is dropped.
@@ -610,8 +700,297 @@ const judge = async ($: Engine, config: Config, state: State, paired: ReturnType
   }
   if (!handingOver && paired.end === 'answer') {
     log('debug', 'judge: the stop and the end of the turn are both in, the turn ended in answer')
-    await atPauseOrSay($, paired.stop, config, state)
+    const read = await atPauseOrSay($, paired.stop, config, state)
+    // A handover begun at this pause replaces the session: there is no pause of it to plan for.
+    if (underWay(state)) return
+    // The plan goes by the context the pause judged; where the pause could not read, the plan reads the context itself.
+    try {
+      const tokens = read === undefined ? (await $.session.usage()).context.tokens : read[0].context.tokens
+      await planIdle($, config, state, paired.stop, tokens)
+    } catch {
+      log('warn', 'idle: could not plan')
+    }
   } else log('debug', `judge: the turn ended in ${paired.end}, no pause`)
+}
+
+// The baseline belongs to the project's setup (system prompt, tools, MCP servers, CLAUDE.md), not to one session: kept per project folder.
+const baselineKey = (cwd: string) => `idle-baseline:${cwd}`
+
+// The first request of a fresh session is the project's baseline, unless the session is one a handoff of the mod began: its first message
+// is the handoff. Whatever fails here leaves the baseline as it was; the next fresh session tries again.
+const keepBaseline = async ($: Engine, state: State, usage: InputUsage) => {
+  try {
+    const [id, cwd, at] = await Promise.all([$.session.id(), $.session.cwd(), $.clock.now()])
+    if (id === state.deliveredInto) return
+    const tokens = baselineOfUsage(usage)
+    state.idle.baseline = tokens
+    await $.store.set(baselineKey(cwd), { tokens, at })
+  } catch {
+    // Not kept: the transcript of a resumed session is the fallback.
+  }
+}
+
+// Reads the transcript for the cache lifetime, and finds the baseline where the first request did not give it: kept for the project, or for
+// a resumed session with none kept, the first request in its transcript. A transcript above the limit is read at its end through `tail`, the
+// one process the mod starts; it holds the latest writes, not the first request. The path is never logged.
+const readIdle = async ($: Engine, state: State) => {
+  const idle = state.idle
+  idle.read = false
+  const log = logTo($, state)
+  let text: string | undefined
+  let whole = false
+  const path = idle.transcript
+  if (path !== undefined) {
+    try {
+      const plan = readPlan((await $.fs.stat(path)).size)
+      if (plan === 'read') text = String(await $.fs.read(path))
+      else {
+        const end = await $.process.run(['tail', '-c', String(TAIL_BYTES), path])
+        if (end.exitCode !== 0) throw new Error(`tail ended with ${end.exitCode}`)
+        text = end.stdout
+      }
+      whole = plan === 'read'
+    } catch {
+      if (!idle.unreadSaid) log('warn', 'idle: the transcript could not be read')
+      idle.unreadSaid = true
+    }
+  }
+  // An end read with no write in it leaves the lifetime read before.
+  const lifetime = text === undefined ? undefined : lifetimeOf(text)
+  if (lifetime !== undefined) idle.lifetime = lifetime
+  if (idle.baseline === undefined) {
+    try {
+      const kept = (await $.store.get(baselineKey(await $.session.cwd()))) as { tokens?: unknown } | undefined
+      if (typeof kept?.tokens === 'number') idle.baseline = kept.tokens
+    } catch {
+      // Unknown, as with none kept.
+    }
+  }
+  if (idle.baseline === undefined && !idle.fresh && whole && text !== undefined) idle.baseline = firstBaselineOf(text)
+  log('debug', `idle: cache lifetime ${idle.lifetime ?? 'unknown'}, baseline ${idle.baseline === undefined ? 'unknown' : `${idle.baseline} tokens`}`)
+}
+
+// The line of a pause that is over, and whether a handoff written went with it.
+const pauseOverLine = (why: string, dropped: boolean) => `idle: pause over, ${why}${dropped ? ', the handoff written is dropped' : ''}`
+
+// The pause is over: the planned step and a handoff written for it go. Only the state changes here; the line it gives back, for the log,
+// is the caller's to write once it has read the log level. `why` is for that line only.
+const endPause = ($: Engine, state: State, why: string): string | undefined => {
+  const idle = state.idle
+  // The step under way has no timer and nothing written yet: it is told, and drops what it writes.
+  if (state.preparing && idle.prepared === undefined) idle.endedWhilePreparing = why
+  if (idle.timer === undefined && idle.prepared === undefined) return undefined
+  idle.timer?.cancel()
+  idle.timer = undefined
+  idle.coldTimer?.cancel()
+  idle.coldTimer = undefined
+  if (idle.coldShown) void $.ui.invalidate('ui.render')
+  idle.coldShown = false
+  const dropped = idle.prepared !== undefined
+  idle.prepared = undefined
+  return pauseOverLine(why, dropped)
+}
+
+// Writes the line `endPause` gave back, after the read of the log level, for a handler that has nothing else to log.
+const logPauseOver = async ($: Engine, settings: ConfigResult, state: State, over: string | undefined) => {
+  if (over === undefined) return
+  await readLevel($, settings, state)
+  logTo($, state)('debug', over)
+}
+
+// At the end of each answer, the step that writes the handoff is planned anew, 55 minutes after the answer's last request.
+const planIdle = async ($: Engine, config: Config, state: State, stop: Stop, tokens: number | undefined) => {
+  const idle = state.idle
+  idle.timer?.cancel()
+  idle.timer = undefined
+  const log = logTo($, state)
+  const verdict = planVerdict({
+    on: config.idleHandoff,
+    lifetime: idle.lifetime,
+    tokens,
+    floor: floorOf(config.idleHandoffMinTokens, idle.baseline),
+    handingOver: underWay(state),
+    timers: stop.session_crons?.length ?? 0,
+  })
+  const touch = idle.touch
+  if (!verdict.plan || touch === undefined) return log('debug', `idle: not planned, ${verdict.plan ? 'no request seen' : verdict.why}`)
+  const now = await $.clock.now()
+  const wait = Math.max(0, prepareDueAt(touch) - now)
+  idle.timer = $.clock.after(wait, () => void prepareIdle($, config, state, now))
+  log('debug', `idle: planned in ${Math.round(wait / 60_000)} min`)
+}
+
+// The step itself: the reads first, then every check and the mark in one go with no wait between, so that a turn of the person's that starts
+// meanwhile is seen and not taken for the mod's own.
+const prepareIdle = async ($: Engine, config: Config, state: State, since: number) => {
+  const idle = state.idle
+  idle.timer = undefined
+  idle.endedWhilePreparing = undefined
+  const log = logTo($, state)
+  try {
+    const [agents, now, usage] = await Promise.all([
+      $.agent.list(),
+      $.clock.now(),
+      $.session.usage(),
+      idle.transcript === undefined ? undefined : readIdle($, state),
+    ])
+    const busy = state.answerRunning
+      ? 'a turn runs'
+      : underWay(state)
+        ? 'a handover runs'
+        : state.countdown !== undefined
+          ? 'a countdown runs'
+          : agents.some(a => a.status === 'running')
+            ? 'a subagent runs'
+            : undefined
+    const verdict = fireVerdict({ busy, lifetime: idle.lifetime, now, touch: idle.touch ?? now })
+    if (!verdict.go) return log('debug', `idle: not prepared, ${verdict.why}`)
+    if (config.dryRun) {
+      idle.prepared = { kind: 'simulated', since }
+      return log('info', 'idle: would prepare')
+    }
+    state.preparing = true
+    state.held = []
+    const io = sessionIo($, state)
+    try {
+      const r = await prepare(io, state, config)
+      const over = idle.endedWhilePreparing
+      if (over !== undefined) log('debug', pauseOverLine(over, true))
+      else if ('stage' in r) {
+        say($, notPreparedLine(r.reason))
+        log('warn', `idle: preparing failed (stage ${r.stage})`)
+      } else {
+        idle.prepared = { kind: 'real', text: r.text, ...(r.file === undefined ? {} : { file: r.file }), since }
+        log('info', `idle: handoff prepared, ${r.text.length} characters`)
+        // Reading the cache keeps it for another hour from when the model was asked (measured); a request that missed it may have written a
+        // short-lived entry of its own. The command's turn needs no check: its requests read or write the session's own entry, and each moved
+        // the touch as it went out.
+        if (r.began !== undefined && !idle.doubted) {
+          if (isHit(r.usage, usage.context.tokens ?? Number.POSITIVE_INFINITY)) idle.touch = r.began
+          else log('debug', 'idle: the handoff missed the cache, the touch stays')
+        }
+        const touch = idle.touch ?? now
+        idle.coldTimer = $.clock.after(Math.max(0, touch + HOUR_MS - (await $.clock.now())), () => {
+          idle.coldTimer = undefined
+          showCold($, state)
+        })
+      }
+    } finally {
+      await release(io, state, undefined, () => {
+        state.preparing = false
+      })
+    }
+  } catch (err) {
+    state.preparing = false
+    say($, notPreparedLine(why(err)))
+    log('warn', 'idle: preparing failed (unexpected error)')
+  }
+}
+
+// The message that came back after the handoff was written, which has already taken it (`claim`). Judged by the clock and by what runs;
+// whatever the verdict, the handoff written is gone. Only a cold cache with nothing running switches: the message is turned away here and
+// goes into the fresh session with the handoff, from a step of its own, since the host refuses a /clear from a hook that holds a turn.
+// Everything else lets the message through into this session. The answer is the drop reason, or `undefined` to let it through.
+const comeBack = async ($: Engine, state: State, prepared: IdlePrepared, input: { text: string; attachments?: readonly unknown[] }) => {
+  const log = logTo($, state)
+  let verdict: ReturnType<typeof returnVerdict>
+  let now: number
+  let turns: number
+  let tokens: number | undefined
+  try {
+    const [agents, at, count, usage] = await Promise.all([$.agent.list(), $.clock.now(), $.session.turns(), $.session.usage()])
+    now = at
+    turns = count
+    tokens = usage.context.tokens
+    const stop = state.lastStop
+    const running = { subagents: agents.filter(a => a.status === 'running').length, backgroundTasks: 0, oneShotTimers: 0, ...stop }
+    const busy = busyReason(running) !== undefined
+    verdict = returnVerdict({ now, touch: state.idle.touch ?? now, busy, attachments: (input.attachments?.length ?? 0) > 0 })
+  } catch {
+    log('warn', 'idle: could not judge the return, the message stays in this session')
+    endReturn($, state)
+    return undefined
+  }
+  if (verdict === 'cold' && prepared.kind === 'real') {
+    // In one step with no wait: from here the holding is the handover's, and the message is the first of what it carries.
+    state.returning = false
+    state.handingOver = true
+    state.held.unshift(input.text)
+    spendMarks($, state, now, turns)
+    log('info', 'idle: return after the cache expired, handing over')
+    $.clock.after(0, () => void returnInto($, state, prepared, input.text, () => switchedLine(idleFor(now - prepared.since))))
+    return HELD_MOMENT
+  }
+  endReturn($, state)
+  if (verdict === 'warm') {
+    state.idle.checkAgainst = tokens
+    log('debug', 'idle: return while the cache is warm, the handoff written is dropped')
+    return undefined
+  }
+  // What remains keeps a cold cache in this session: running work, an attachment, or a dry run, which counts as an attempt as at the threshold.
+  if (verdict === 'busy') say($, WORK_STAYS)
+  else if (verdict === 'attachments') say($, ATTACHMENTS_STAY)
+  else {
+    spendMarks($, state, now, turns)
+    say($, DRY_RUN_RETURN)
+  }
+  log('debug', `idle: return after the cache expired, ${verdict === 'cold' ? 'dry run' : verdict}, the message stays in this session`)
+  return undefined
+}
+
+// The judgment is over and the message goes into this session: what was typed meanwhile follows it, from a step of its own so that it comes
+// after the message the hook lets through.
+const endReturn = ($: Engine, state: State) => {
+  if (state.held.length === 0) {
+    state.returning = false
+    return
+  }
+  $.clock.after(
+    0,
+    () =>
+      void release(sessionIo($, state), state, undefined, () => {
+        state.returning = false
+      }),
+  )
+}
+
+// The switch: /clear, then the handoff with the message that came back. The host leaves a message a hook turned away in the prompt, and that
+// survives the /clear: once the message is in, the prompt is cleared of it, unless the person has changed it since.
+// `asap` hands the handoff over the same way, with no message of its own (`text` undefined) and its own line at the end.
+const returnInto = async ($: Engine, state: State, prepared: Extract<IdlePrepared, { kind: 'real' }>, text: string | undefined, done: () => string) => {
+  const io = sessionIo($, state)
+  try {
+    let delivered = false
+    await settle($, state, { name: 'handover', done }, () =>
+      carryOut(io, state, async () => {
+        const failure = await deliverReturn(io, state, prepared, text !== undefined)
+        delivered = failure === undefined
+        return failure === undefined ? {} : { failure }
+      }),
+    )
+    if (delivered && text !== undefined && (await $.prompt.read()).text.trim() === text.trim()) await $.prompt.fill({ text: '', mode: 'replace' })
+  } catch {
+    io.log('debug', 'idle: could not clear the prompt after the switch')
+  } finally {
+    state.handingOver = false
+  }
+}
+
+// The band says it once the handoff written has gone cold. A late timer (system sleep) shows it late: typing checks the clock as well.
+const showCold = ($: Engine, state: State) => {
+  const idle = state.idle
+  if (idle.prepared?.kind !== 'real' || idle.coldShown) return
+  idle.coldShown = true
+  void $.ui.invalidate('ui.render')
+  logTo($, state)('debug', 'idle: the handoff written has gone cold, the band says so')
+}
+
+// From typing: the level is read only once the band is to show, not at every key.
+const checkCold = async ($: Engine, settings: ConfigResult, state: State) => {
+  const touch = state.idle.touch
+  if (touch === undefined || (await $.clock.now()) - touch < HOUR_MS) return
+  await readLevel($, settings, state)
+  showCold($, state)
 }
 
 export const register: Register = (on, options) => {
@@ -623,6 +1002,8 @@ export const register: Register = (on, options) => {
   // wait, and two handlers' reads need not come back in the order they went out, so a handler changes the state before it reads, as it
   // would with no read at all, and logs after.
   on('session.start', async ($, e, next) => {
+    // Every session reads the transcript at its first turn: a /clear does not reload the mod, but ends what was known of the session.
+    state.idle.read = true
     await readLevel($, settings, state)
     await introduce($, settings, state)
     return next(e)
@@ -651,6 +1032,9 @@ export const register: Register = (on, options) => {
     state.lastStop = undefined
     const awaited = state.turnWait !== undefined
     const own = startOfTurn(state, e.turnId)
+    // A turn is the end of a pause, unless it is the command's own while it writes the handoff. Any other turn meanwhile ends it: a slash
+    // command that starts one, or the message held meanwhile, whose turn starts while it is put in (its submit settles once the turn started).
+    const over = state.preparing && own ? undefined : endPause($, state, 'a turn started')
     // A turn is work, whoever started it (a finished background task starts one too): no handover in the middle of it.
     const ended = end(countdownIo($, state), state)
     await readLevel($, settings, state)
@@ -659,22 +1043,87 @@ export const register: Register = (on, options) => {
     log('trace', `turn.start ${e.turnId}`)
     if (ended) log('debug', endedLine('turn'))
     if (awaited) log('debug', own ? `turn ${e.turnId} is the command's turn` : `turn ${e.turnId} is not the command's turn`)
+    if (over !== undefined) log('debug', over)
     return next(e)
   })
 
   // A mod with settings it cannot trust goes no further: it has said why where the person looks, and answers its command.
   if (config === undefined) return
 
+  // How the session began: a start or a /clear has no conversation, so its first request is the project's baseline.
+  on('classic.SessionStart', async ($, e, next) => {
+    if (e.agent_id === undefined) {
+      state.idle.fresh = e.source === 'startup' || e.source === 'clear'
+      state.idle.baselineDue = state.idle.fresh
+      state.idle.transcript = e.transcript_path
+    }
+    return next(e)
+  })
+
+  // A change of model says the cache lifetime outright, the one place the host does.
+  on('classic.PostModelSwitch', async ($, e, next) => {
+    if (e.agent_id === undefined) {
+      state.idle.lifetime = e.cache_ttl
+      await logPauseOver($, settings, state, endPause($, state, 'a change of model'))
+    }
+    return next(e)
+  })
+
+  // While the handoff is written nobody is there to answer a permission the command's turn asks for: it is turned down, which ends the turn
+  // at once (measured), and the mod writes the handoff instead. The mod never grants one, and outside that turn every prompt shows as it is.
+  on('classic.PermissionRequest', async ($, e, next) => {
+    if (!state.preparing || state.turnWait?.own === undefined || e.agent_id !== undefined) return next(e)
+    await readLevel($, settings, state)
+    logTo($, state)('debug', `idle: a permission for ${e.tool_name} was turned down while the handoff is written`)
+    return { decision: { behavior: 'deny', interrupt: true } }
+  })
+
+  // Only for the path of the transcript: the end of the first turn reads it, and may come before the stop. After a reload no session start
+  // came to give it.
+  on('classic.UserPromptSubmit', async ($, e, next) => {
+    if (e.agent_id === undefined) state.idle.transcript = e.transcript_path
+    return next(e)
+  })
+
+  // Each request of the main loop reads or writes the cache: its start is the touch, taken before the request goes out, which is never too
+  // late. The first request of a fresh session gives the baseline. The level is not read here: a read at every request would be a round
+  // trip each; the level in force is the one the turn's start read.
+  on('turn.step', async function* ($, e, next) {
+    if (e.agentId !== undefined) return yield* next(e)
+    const idle = state.idle
+    // The command's turn writing the handoff reads the cache like any turn, unless that is no longer believed.
+    if (!(state.preparing && idle.doubted)) idle.touch = await $.clock.now()
+    const r = yield* next(e)
+    const against = idle.checkAgainst
+    if (against !== undefined && e.index === 0) {
+      idle.checkAgainst = undefined
+      if (r.usage !== null && !isHit(r.usage, against) && !idle.doubted) {
+        idle.doubted = true
+        logTo($, state)('warn', 'idle: the request after a warm return missed the cache, the handoff written no longer counts as reading it')
+      }
+    }
+    if (idle.baselineDue && e.index === 0) {
+      idle.baselineDue = false
+      if (r.usage !== null) await keepBaseline($, state, r.usage)
+    }
+    return r
+  })
+
   // What is typed while a handoff runs is held, and goes in when it is done. The hold comes first and at once, before any wait: the handoff
   // may end during one, and the input must be judged by the state it was typed in.
   on('prompt.submit', async ($, e, next) => {
     const reason = hold(state, e)
-    const handingOver = state.handingOver
+    const handingOver = underWay(state)
+    // Only a message that is let through can be the one that comes back after the handoff was written.
+    const shown = state.idle.coldShown
+    const prepared = reason === undefined && !handingOver ? claim(state, e) : undefined
+    if (prepared !== undefined && shown) void $.ui.invalidate('ui.render')
     const ended = end(countdownIo($, state), state)
     await readLevel($, settings, state)
     if (ended) logTo($, state)('debug', endedLine('submit'))
     if (handingOver) logTo($, state)('debug', `input while handing over (${e.origin.kind}): ${reason === undefined ? 'let through' : 'held'}`)
-    return reason === undefined ? next(e) : { drop: reason }
+    const dropped = prepared === undefined ? reason : await comeBack($, state, prepared, e)
+    return dropped === undefined ? next(e) : { drop: dropped }
   }).catch((_, e, next) => next(e))
 
   // Watches the calls of the command's turn for the user's decline at the permission prompt, and the first call after a compact for the size
@@ -705,6 +1154,10 @@ export const register: Register = (on, options) => {
     await endAsap($, settings, state, 'the session ended').catch(() => {})
     state.lastStop = undefined
     state.asapScheduled = false
+    // What was known of the session's cache and baseline ends with it; the next session's first turn reads again.
+    const over = endPause($, state, 'the session ended')
+    state.idle = freshIdle()
+    await logPauseOver($, settings, state, over)
     return next(e)
   })
 
@@ -713,6 +1166,7 @@ export const register: Register = (on, options) => {
   // compact comes after its countdown ran out, and meets none.
   on('session.compact', async ($, e, next) => {
     if (e.trigger !== 'precompute') await endCountdown($, settings, state, 'compact').catch(() => {})
+    if (e.trigger !== 'precompute' && e.agentId === undefined) await logPauseOver($, settings, state, endPause($, state, 'a compact'))
     const result = await next(e)
     // After a compact the context is unknown at first, and nothing would end the mark; a compact the host refused leaves it standing. A
     // subagent's compact of its own transcript (`agentId`) leaves the main conversation as it was.
@@ -725,15 +1179,27 @@ export const register: Register = (on, options) => {
   on('prompt.edit', async ($, e, next) => {
     const countdown = state.countdown
     if (countdown?.kind === 'button' && typed(e, !countdown.survey)) await endCountdown($, settings, state, 'edit').catch(() => {})
-    return next(e)
+    const out = await next(e)
+    // After a sleep the step that shows the band may not have come yet: the typing finds the cache cold first. Never waited for.
+    if (state.idle.prepared?.kind === 'real' && !state.idle.coldShown) void checkCold($, settings, state).catch(() => {})
+    return out
   })
 
-  // The band above the prompt, while a countdown runs: drawn from the countdown alone, so drawing waits on nothing and changes nothing but
+  // The band above the prompt, while a countdown runs or once the handoff written in a pause has gone cold: drawn from the state alone, so drawing waits on nothing and changes nothing but
   // whether a survey holds the band, which only the drawing sees. A survey has the band while it shows. The first draw measured gave
   // `hasSurvey` as undefined (docs/host-behaviour.md, Commands): that is no survey.
   on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => {
     const countdown = state.countdown
-    if (countdown === undefined) return next(e)
+    if (countdown === undefined) {
+      // The band of a handoff gone cold: no key and no countdown, and a survey has the band while it shows.
+      if (!state.idle.coldShown || e.props.hasSurvey === true) return next(e)
+      const { Box, Text } = $.ui.resolve(e)
+      return (
+        <Box>
+          <Text>{COLD_BAND}</Text>
+        </Box>
+      )
+    }
     const survey = e.props.hasSurvey === true
     surveyed(countdownIo($, state), state, survey)
     if (survey) return next(e)
@@ -756,13 +1222,16 @@ export const register: Register = (on, options) => {
       state.answerRunning = false
     }
     const paired = main ? judgeable(state.pairing) : undefined
-    const handingOver = state.handingOver
+    const handingOver = underWay(state)
     await readLevel($, settings, state)
     const log = logTo($, state)
     log('trace', `turn.complete ${e.turnId} ${e.reason}${e.agentId === undefined ? '' : `, agent ${e.agentId}`}`)
     if (!main) log('debug', `agent ${e.agentId}, not a pause`)
     // Passed on after the read: it goes by the turn's own id, which no other event changes, and the handoff it wakes logs after this line.
     if (main && endOfTurn(state, e) === 'foreign') log('debug', `the end of turn ${e.turnId} is not the command's, still waiting for it`)
+    // The first turn of a session that ended in an answer, and is none of the mod's own handoff, reads the transcript. With no path seen yet
+    // the read waits for a turn that has one.
+    if (main && state.idle.read && state.idle.transcript !== undefined && !handingOver && e.reason === 'answer') await readIdle($, state).catch(() => {})
     if (paired !== undefined) await judge($, config, state, paired, handingOver)
     return next(e)
   })
@@ -778,10 +1247,11 @@ export const register: Register = (on, options) => {
     }
     // What runs besides the answer, as this stop reports it: `asap` at rest judges from it until the next turn starts.
     state.lastStop = outstandingOf(e)
+    state.idle.transcript = e.transcript_path
     const out = await next(e)
     // Another hook that asks the session to go on has the last word: it is no pause. Nor is the end of the handoff command's own turn.
     const blocked = out.block !== undefined
-    const handingOver = state.handingOver
+    const handingOver = underWay(state)
     if (!blocked && !handingOver) stopSeen(state.pairing, e)
     const paired = blocked || handingOver ? undefined : judgeable(state.pairing)
     await readLevel($, settings, state)

@@ -31,7 +31,7 @@ sweet-spot never acts in the middle of a turn. It waits for a pause, counts down
 - **Counts down first.** A line above the prompt counts down 10 seconds, with "Not now" to move the handover back.
 - **Waits for running work.** A subagent, a background task or a timer holds it back, until the emergency brake: 150k past the threshold, never beyond 90 percent of the window.
 - **Typing is not lost.** What you type during a handover is held and goes in when it is done.
-- **Writes nothing.** No files, no network, no processes of its own.
+- **Writes nothing.** No files, no network, and one process only: `tail`, to read the end of a long transcript.
 
 ## Install
 
@@ -73,7 +73,7 @@ A fresh session starts at 62k to 98k tokens in real handovers. Nobody publishes 
 
 ## What it does
 
-At the end of an answer it looks at the context size. Past the threshold, and when nothing else is going on, it counts down and then hands over. By default that means it asks for a handoff, clears the session and submits the text of the handoff file, not its path, as the first message of the new one. With `/compact` as the way, the session stays and only gets smaller; nothing is cleared or submitted.
+At the end of an answer it looks at the context size. Past the threshold, and when nothing else is going on, it counts down and then hands over. By default that means it asks for a handoff, clears the session and submits the text of the handoff file, not its path, as the first message of the new one. The old session stays as it was: `/resume` takes you back to it. With `/compact` as the way, the session stays and only gets smaller; nothing is cleared or submitted.
 
 - **Only at a pause.** It acts when an answer is finished, never in the middle of a turn and never from a subagent. A turn that ended with an error, a refusal or Esc is no pause.
 - **A countdown before it acts.** A line above the prompt says what is coming and counts down `countdown_seconds` (10 by default). "Not now" (key `1` in an empty prompt) moves the handover back, as `/sweet-spot later` with no number does. Typing or sending a message stops the countdown without moving anything; the next pause counts down again. A draft in the prompt holds the countdown back until the next pause. After two pauses that did not hand over, the countdown comes without "Not now", typing no longer stops it, and your draft stays in the prompt. When the countdown runs out the mod looks again and hands over only if it still should.
@@ -84,6 +84,7 @@ At the end of an answer it looks at the context size. Past the threshold, and wh
 - **You choose the way.** `handoff_method` is the main way, `handoff_fallback` the one tried when the main way fails before it changed the session, and the change is said with its reason. The ways: the mod writes the handoff itself with a built-in prompt (`internal-handoff`, the default); Claude Code's own `/compact` (`builtin-compact`, the default fallback); or your own command, run as a turn of its own, whose file the mod reads (`external-command`, needs `handoff_command`). If Claude Code refuses the compact (it does in a headless `-p` or SDK session) or a hook vetoes it, the fallback takes over; if you press Esc during it, nothing else hands over.
 - **A compact that is not enough is not repeated.** If the context is still above the threshold right after a compact (at the first tool call of the next turn, or its pause), the next time the fallback takes over; with no fallback, the mod says so once and leaves the session alone until a pause is below the threshold again.
 - **Typing is held, not lost.** What you type while a handover runs is held and goes in when it is done: into the fresh session with the handoff, or into the compacted session. If submitting the message fails, `/sweet-spot redeliver` is the way out: it submits it again.
+- **After a long pause, a fresh session.** When you leave a session alone for more than an hour, the prompt cache expires, and your next message would send the whole conversation again at the price of writing the cache. With an hour of cache and a context well past what a fresh session starts with, the mod writes a handoff at minute 55, while the cache is still warm, and leaves the session as it is. Come back while the cache is warm and nothing changes; come back after it has expired, and your message starts a fresh session with the handoff, and a line says how long the session sat idle and that the old one is in `/resume`. The band above the prompt says so once the cache has expired, and `/sweet-spot later` keeps you in the session. Running work or an attachment keeps your message in the session too. The details, the costs and the limits: [docs/idle-handoff.md](docs/idle-handoff.md).
 - **Report only, if you want.** With `dry_run` on it only says "would hand over now" and does nothing.
 - **Bad settings are refused, not repaired.** A threshold so low that every fresh session would trigger the next handover is rejected with the reason, and the mod stays off.
 
@@ -117,9 +118,10 @@ Both ways bring the context down. They differ in what the session holds afterwar
 
 ## What it can reach
 
-- **Reads:** your handoff file, `~/.claude/sweet-spot/handoff-prompt.md` if you made one, and a listing of the temp directory to find a handoff the answer did not name, or of the folder of the file it does name, and the environment variables `HOME` and `TMPDIR`, to find those two places.
-- **Writes:** nothing. The message waiting to be delivered lives in the mod's store in Claude Code, which `/clear` does not touch.
-- **Network, own processes:** none. The model call that writes the handoff runs through Claude Code, and so does the compact.
+- **Reads:** the transcript of the session, to learn how long its prompt cache lives (the whole file up to 4 MiB, above that its last 256 KiB), your handoff file, `~/.claude/sweet-spot/handoff-prompt.md` if you made one, and a listing of the temp directory to find a handoff the answer did not name, or of the folder of the file it does name, and the environment variables `HOME` and `TMPDIR`, to find those two places.
+- **Writes:** nothing. The message waiting to be delivered, and the baseline of each project folder for the idle handoff, live in the mod's store in Claude Code, which `/clear` does not touch.
+- **Network:** none. The model call that writes the handoff runs through Claude Code, and so does the compact.
+- **Own processes:** one. A transcript above 4 MiB is read at its end with `tail -c 262144 <transcript>`, with no shell; Claude Code's file read stops at 4 MiB. Without `tail` (Windows without the Git tools on the path) the idle handoff stays off for that session and a `warn` line says so.
 
 To check this against the code yourself:
 
@@ -144,7 +146,7 @@ There are several context mods. They fall into a few approaches, and this table 
 
 ## What it does not do
 
-No memory, no rules, no panel or status line; the line above the prompt shows only while a countdown runs. It has no summarizer of its own: when it compacts, it starts Claude Code's own `/compact`. Those belong in other tools. The first version also has no cache keep-warm and no log file; the [CHANGELOG](CHANGELOG.md) lists them under "Not in this version".
+No memory, no rules, no panel or status line; the line above the prompt shows only while a countdown runs, or once an idle handoff waits for a cache that has expired. It has no summarizer of its own: when it compacts, it starts Claude Code's own `/compact`. Those belong in other tools. The first version also has no cache keep-warm and no log file; the [CHANGELOG](CHANGELOG.md) lists them under "Not in this version".
 
 ## Settings
 
@@ -160,6 +162,8 @@ In the `/config` menu under sweet-spot.
 | `countdown_seconds` | `10`               | Seconds the line above the prompt counts down before a handover, with "Not now". A whole number from `0` to `60`; `0` hands over at once. Without a terminal or desktop window to show it (VS Code, mobile), it hands over at once too. |
 | `handoff_method`    | `internal-handoff` | How the session is handed over. `internal-handoff`: the mod writes a handoff and starts a fresh session with it. `builtin-compact`: Claude Code's own `/compact`, the session stays. `external-command`: your own command.              |
 | `handoff_fallback`  | `builtin-compact`  | Used when the main method fails before it changed the session: any of the three, or `none` for no second try (the mod says why). The same value as `handoff_method` means no fallback.                                                  |
+| `idle_handoff`      | on                 | After a long pause, write a handoff shortly before the prompt cache expires, and start a fresh session with it when you come back after it has. Only with an hour of cache. See [docs/idle-handoff.md](docs/idle-handoff.md).                     |
+| `idle_handoff_min_tokens` | `0`          | Context size from which the idle handoff is written. `0`: the session's baseline, what a fresh session sends with its first message, plus 30000.                                                                                        |
 | `handoff_command`   | empty              | Only used with `external-command` (advanced). Name of your own handoff command, without the slash. `external-command` with no command here switches the mod off and says why.                                                           |
 
 The two ways are choices in `/config`, so they cannot be mistyped; an unknown value is refused. Does not load before Claude Code 2.1.271: the host rejects a mod with fixed choices in an older version ("If you declare `options` on any field, users on Claude Code versions before v2.1.271 can't load the plugin", Claude Code plugin reference, section "Limit a field to fixed options"). Examples:
@@ -170,7 +174,7 @@ The two ways are choices in `/config`, so they cannot be mistyped; an unknown va
 
 The gap ends after the minutes **or** the turns, whichever comes first. Both are starting points; raise them if attempts come too close together.
 
-A change in `/config` takes effect at once: the host reloads the mod, which starts from a clean state, so the minimum gap, the `redeliver` pointer, a `later` and an `asap` are forgotten. A reload while a handoff is running (the seconds after the mod decides to hand over, see [Handoff or compact](#handoff-or-compact)) ends that handoff without a message, so leave the settings alone during that time.
+A change in `/config` takes effect at once: the host reloads the mod, which starts from a clean state, so the minimum gap, the `redeliver` pointer, a `later`, an `asap` and an idle handoff written are forgotten. A reload while a handoff is running (the seconds after the mod decides to hand over, see [Handoff or compact](#handoff-or-compact)) ends that handoff without a message, so leave the settings alone during that time.
 
 ## Commands
 
@@ -178,9 +182,9 @@ The mod has one command, `/sweet-spot`, and the word after it says what it does.
 
 | Command                       | What it does                                                                                                                                                                                       |
 | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/sweet-spot status`          | Says where the context stands: the tokens against the window, where the next handover comes (with a `later` that holds) and the emergency brake. It only reads; a countdown keeps running.         |
-| `/sweet-spot asap`            | Hands over at the next pause, below the threshold and inside the minimum gap too, with no countdown. It still waits for running work. It says the context, or why it did not take the request.     |
-| `/sweet-spot later [tokens]`  | Moves the next handover back until the context has grown that many tokens past where it is now (`50000` or `50k`; with no number, `later_tokens`). It says the value it hands over at, or why not. |
+| `/sweet-spot status`          | Says where the context stands: the tokens against the window, where the next handover comes (with a `later` that holds) and the emergency brake, then a standing `asap` and where the idle handoff stands. It only reads; a countdown keeps running.         |
+| `/sweet-spot asap`            | Hands over at the next pause, below the threshold and inside the minimum gap too, with no countdown. It still waits for running work. It says the context, or why it did not take the request. With an idle handoff written and the cache expired, it hands that one over. |
+| `/sweet-spot later [tokens]`  | Moves the next handover back until the context has grown that many tokens past where it is now (`50000` or `50k`; with no number, `later_tokens`). It says the value it hands over at, or why not. With the idle handoff written after a long pause, it drops that too, so your next message stays in this session. |
 | `/sweet-spot redeliver`       | Submits again the first message of a handoff that did not reach the fresh session.                                                                                                                 |
 
 ## Limits

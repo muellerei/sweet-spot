@@ -236,7 +236,7 @@ for (const args of [
 }
 
 const USAGE =
-  'use `/sweet-spot status` to see where the context stands, `/sweet-spot later [tokens]` to move the next handover back, `/sweet-spot asap` to hand over at the next pause, or `/sweet-spot redeliver` to submit again the handoff that did not reach the fresh session'
+  'use `/sweet-spot status` to see where the context stands, `/sweet-spot later [tokens]` to move the next handover back or drop the idle handoff, `/sweet-spot asap` to hand over at the next pause, or `/sweet-spot redeliver` to submit again the handoff that did not reach the fresh session'
 
 for (const args of ['LATER 50k', 'Later', 'later50k', 'laterx']) {
   modTest(`"${args}" is no later: the command tells what it does`, LIVE, async ($, on) => {
@@ -255,7 +255,7 @@ modTest('the menu and the help name both words', LIVE, async ($, on) => {
     {
       name: 'sweet-spot',
       description:
-        'Show where the context stands, move the next handover back, hand over at the next pause, or submit again the handoff that did not reach the fresh session',
+        'Show where the context stands, move the next handover back or drop the idle handoff, hand over at the next pause, or submit again the handoff that did not reach the fresh session',
       argumentHint: 'status | later [tokens] | asap | redeliver',
       immediate: true,
     },

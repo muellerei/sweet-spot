@@ -4,11 +4,21 @@
 import type { CompactCheck } from './compact-check'
 import type { Countdown } from './countdown'
 import type { Asap, Attempt, Later } from './decide'
+import type { Lifetime } from './idle-handoff'
 import type { LevelMemo } from './log'
 import { freshPairing, type Pairing } from './pairing'
 
 // How the awaited turn of the handoff command ended: with its answer, or without one and why.
 export type Ended = { answer: string; rejected?: true } | { failure: string; cancelled?: true }
+
+// A handoff written in a pause and not yet handed over; in a dry run only the time it would have been written.
+// `since` is the end of the answer the pause began after.
+export type IdlePrepared = { kind: 'real'; text: string; file?: string; since: number } | { kind: 'simulated'; since: number }
+
+// A handover runs, the handoff after a long pause is being written, or the message that came back after it is judged: either way the
+// session is the mod's for the moment.
+export const underWay = (state: { handingOver: boolean; preparing: boolean; returning: boolean }): boolean =>
+  state.handingOver || state.preparing || state.returning
 
 // The log level of the latest read (`LevelMemo`), which every handler that logs makes at its start; a line written outside a handler, as
 // from a timer, goes by it.
@@ -68,7 +78,61 @@ export type State = LevelMemo & {
   // at the first of them. Two give a countdown that typing does not stop. Typing does not end it: only a handover that began, a later
   // handover asked for (the command or Not now) and a context that shrank below `from`.
   deferred: { pauses: number; from: number } | undefined
+  // The session `/clear` made for a handoff of the mod. Unlike `pendingIn` it stays once the handoff is in: the first request of that session
+  // is the handoff, which is not what the project starts with, and must not become its baseline.
+  deliveredInto: string | undefined
+  // True while the handoff after a long pause is written. It holds what `handingOver` holds (see `underWay`): the mod's own work is no pause
+  // and no turn of the person's.
+  preparing: boolean
+  // True from the message that came back after the handoff was written, which takes it at once, until that message is judged: a second
+  // message meanwhile is held and never sees the handoff. A switch to a fresh session hands on to `handingOver`.
+  returning: boolean
+  // What the handoff after a long pause knows of the session (idle-handoff.ts). `touch` is when the main loop last read or wrote the cache:
+  // the start of its last request. `read` is due at the first turn of every session, since a /clear does not reload the mod but ends what
+  // was known. `fresh`: the session began with no conversation (a start or a /clear), so its first request is the project's baseline.
+  idle: {
+    // The step that writes the handoff, planned at the end of an answer; and the handoff written, until the person comes back or the pause ends.
+    timer: { cancel: () => void } | undefined
+    prepared: IdlePrepared | undefined
+    // The pause ended while the handoff was being written (a turn not the command's, a compact, a change of model): why, so that the handoff
+    // that comes is dropped.
+    endedWhilePreparing: string | undefined
+    // The step that shows the band once the handoff written has gone cold, and whether it shows.
+    coldTimer: { cancel: () => void } | undefined
+    coldShown: boolean
+    // After a warm return the first request of the next turn shows whether the handoff written really kept the cache: it is checked
+    // against the context at the return (`checkAgainst`), not against the request, which may carry a long message of its own. One
+    // that missed it means it did not: from then on in the session (`doubted`) writing the handoff no longer moves the touch.
+    checkAgainst: number | undefined
+    doubted: boolean
+    touch: number | undefined
+    lifetime: Lifetime | undefined
+    baseline: number | undefined
+    read: boolean
+    fresh: boolean
+    baselineDue: boolean
+    transcript: string | undefined
+    unreadSaid: boolean
+  }
 }
+
+export const freshIdle = (): State['idle'] => ({
+  timer: undefined,
+  prepared: undefined,
+  endedWhilePreparing: undefined,
+  coldTimer: undefined,
+  coldShown: false,
+  checkAgainst: undefined,
+  doubted: false,
+  touch: undefined,
+  lifetime: undefined,
+  baseline: undefined,
+  read: true,
+  fresh: false,
+  baselineDue: false,
+  transcript: undefined,
+  unreadSaid: false,
+})
 
 export const freshState = (): State => ({
   lastAttempt: undefined,
@@ -90,6 +154,10 @@ export const freshState = (): State => ({
   compactCheck: undefined,
   countdown: undefined,
   deferred: undefined,
+  deliveredInto: undefined,
+  preparing: false,
+  returning: false,
+  idle: freshIdle(),
   logLevel: 'off',
   badLogLevel: undefined,
 })

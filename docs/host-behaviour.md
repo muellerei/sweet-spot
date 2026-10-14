@@ -47,6 +47,13 @@ Contents: [Events and their order](#events-and-their-order) · [`/clear` and the
   into a session that does not know what it was for; this is why sweet-spot postpones while work is running.
 - **Text typed but not sent survives `/clear`.** It stays in the prompt field of the fresh session, neither sent nor mixed into the
   handoff. _Measured 2026-10-10, version not recorded; text typed during a handoff._ A mod need not hold back for a draft.
+- **`/clear` runs from `$.clock.after(0)` after a `prompt.submit` hook dropped the message,** and the session id changes. The dropped
+  text stays in the prompt. _Measured 2026-10-13, Claude Code 2.1.296; a throwaway mod that dropped a typed message and ran `/clear`
+  from the timer._ A mod that carries a message into the fresh session clears it from the prompt afterwards, as the idle handoff does,
+  but only while the prompt still holds exactly that message.
+- **The old session stays in `/resume`.** After a handoff of the mod the old transcript file is still there in full under its own id,
+  and `claude --resume` lists the old and the fresh session side by side. _Measured 2026-10-13, Claude Code 2.1.296; a real handoff of
+  the mod._ Nothing of the old conversation is lost by a handoff.
 
 ## Loading
 
@@ -105,6 +112,11 @@ Contents: [Events and their order](#events-and-their-order) · [`/clear` and the
   `classic.PermissionRequest`, and the model answers on. sweet-spot reads the decline from that text (`USER_REJECTED` in `handoff.ts`)
   in a `tool.call` hook while the command's turn runs, and cancels when no file was written because of it; a rule's denial falls back.
   If the host changes the words, the decline goes unseen and Esc falls back as it did before.
+- **Answering `classic.PermissionRequest` with `{ decision: { behavior: 'deny', interrupt: true } }` ends the command's turn at once.**
+  The turn ended 25 to 40 ms later, with no prompt left open; the tool returned `isError` with the text of the user's decline, and
+  `turn.complete` came with `reason: answer` and an empty answer, not `aborted`. _Measured 2026-10-13, Claude Code 2.1.296; a command
+  run from `$.clock.after` whose tool call hit an `ask` rule, two runs._ While the idle handoff is written nobody can answer a prompt,
+  so sweet-spot turns it down this way and writes the handoff itself.
 
 ### Commands typed during an answer
 
@@ -168,6 +180,9 @@ Contents: [Events and their order](#events-and-their-order) · [`/clear` and the
   `hasSurvey` as `undefined`, then `false`, the band showed the value, and no render loop followed. A survey never appeared in the
   runs (they show up at random, not after three compacts either), so the switch to "present" is unmeasured. _Measured 2026-10-11,
   Claude Code 2.1.296; the same mod._
+- **A band can be drawn from a flag of the mod's own, with no countdown,** and `$.ui.invalidate('ui.render')` from a `prompt.edit`
+  hook, after `next(e)`, draws it again at every key. _Measured 2026-10-13, Claude Code 2.1.296; a throwaway mod._ The band of the idle
+  handoff relies on it.
 
 ## `$.model.fork`
 
@@ -176,6 +191,17 @@ Contents: [Events and their order](#events-and-their-order) · [`/clear` and the
   `$.model.fork` with the command missing._ A mod has to read `isAnswered`, not test for `null`.
 - **A `$.model.fork` call cannot be cancelled.** _Assumed: its types offer no way._ sweet-spot limits the wait and ignores an answer
   that comes late; after the timeout the call keeps running in the background, which is harmless.
+- **A `$.model.fork` call reads the session's cache entry and keeps it for another hour.** 55 minutes after the end of a turn it read
+  112971 of the 112976 input tokens from a one-hour cache; a return 57 minutes after that call still read the whole context from the
+  cache (115227 read, 73 written). Without the call, the return 62 minutes after the turn wrote the session's own 66960 tokens again.
+  _Measured 2026-10-12 and 2026-10-13, Claude Code 2.1.296; `claude-sonnet-5-5`, three sessions and a confirming run._ The command's
+  turn does the same. The idle handoff counts on it, and checks it after every warm return.
+- **A `$.model.fork` call from a timer raises no turn events,** neither `turn.start`, `turn.step`, `turn.complete` nor `classic.Stop`,
+  and Claude Code's status line does not count it: its cache expiry still shows the end of the last turn plus an hour. _Measured
+  2026-10-13, Claude Code 2.1.296; the same runs._ What arrives while such a call runs comes from the person or from elsewhere.
+- **`turn.step` comes once per request of the main loop,** with `index` from 0 at the start of the turn and `usage` with the four token
+  counts. The split into five-minute and one-hour writes is only in the transcript. _Measured 2026-10-13, Claude Code 2.1.296._ The
+  start of a step is when the cache was last read; the step with index 0 of a fresh session gives the baseline.
 
 ## `$.session.compact`
 

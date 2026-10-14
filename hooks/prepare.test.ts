@@ -33,11 +33,11 @@ const ioWith = (over: Partial<Io>, steps: string[]) =>
     ...over,
   }) as unknown as Io
 
-test('the internal way written alone gives the handoff and what the model read, and clears and submits nothing', async () => {
+test('the internal way written alone gives the handoff, when the model was asked and what it read, and clears and submits nothing', async () => {
   const steps: string[] = []
   const io = ioWith({ modelFork: async () => ({ isAnswered: true, text: 'Goal: ship it.', usage: USAGE }) }, steps)
   const r = await prepareInternally(io)
-  expect(r).toEqual({ text: firstMessage('Goal: ship it.'), usage: USAGE })
+  expect(r).toEqual({ text: firstMessage('Goal: ship it.'), usage: USAGE, began: 1_000 })
   expect(steps).toEqual([])
 })
 

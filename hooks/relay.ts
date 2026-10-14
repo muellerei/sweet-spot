@@ -8,6 +8,7 @@ import {
   USER_REJECTED,
   firstMessage,
   MODEL_FORK_TIMEOUT_MS,
+  NEXT_MESSAGE,
   modelForkFailure,
   modelForkKind,
   handoffPath,
@@ -63,8 +64,9 @@ export type Failure = { stage: 'command' | 'cancelled' | 'turn' | 'path' | 'read
 // How a run ended: with the failure, or with the way that handed over (a redelivery has no way to name).
 export type Outcome = { failure: Failure; method?: undefined } | { failure?: undefined; method?: Method }
 
-// A handoff written and not yet handed over: the first message, where the command's file is, and what the model read for the internal way.
-export type Prepared = { text: string; file?: string; usage?: ModelForkUsage }
+// A handoff written and not yet handed over: the first message, where the command's file is, and for the internal way when the model was
+// asked and what it read.
+export type Prepared = { text: string; file?: string; usage?: ModelForkUsage; began?: number }
 
 const failed = (stage: Failure['stage'], reason: string): Failure => ({ stage, reason })
 
@@ -146,9 +148,9 @@ const notDelivered = (err: unknown, file?: string): Failure =>
 // The step every way of getting a handoff ends in. `file` is where the text can still be found when the fresh session does not get it.
 // The message is kept before `/clear` and until the fresh session has it: it is what `redeliver` submits, and the one place that still has it
 // when the submit fails.
-const deliver = async (io: Io, state: State, text: string, file?: string): Promise<Failure | undefined> => {
+const deliver = async (io: Io, state: State, text: string, file?: string, heading?: string): Promise<Failure | undefined> => {
   const included = state.held.length
-  const message = withHeld(text, state.held)
+  const message = withHeld(text, state.held, heading)
   const before = await io.sessionId()
   const key = pendingKey(before)
   await io.keep(key, message)
@@ -173,6 +175,7 @@ const deliver = async (io: Io, state: State, text: string, file?: string): Promi
   // From here the held typing up to `included` is in the message, wherever that ends up.
   state.held.splice(0, included)
   state.pendingIn = after
+  state.deliveredInto = after
   if (included > 0) io.log('debug', `held inputs in the message: ${included}`)
   io.log('info', `submit, session ${after ?? 'unknown'}, ${message.length} characters`)
   try {
@@ -184,6 +187,12 @@ const deliver = async (io: Io, state: State, text: string, file?: string): Promi
   await dropPending(io, state, key)
   return undefined
 }
+
+// The handoff written in a pause, with the message that came back after it: that message is the first of what is held, so a failure
+// before `/clear` puts it into this session like any typing held, and one after keeps it in the message for `redeliver`. Handed over by
+// `asap` there is no such message, and what is held is typing like during any handoff.
+export const deliverReturn = (io: Io, state: State, prepared: { text: string; file?: string }, withMessage: boolean): Promise<Failure | undefined> =>
+  deliver(io, state, prepared.text, prepared.file, withMessage ? NEXT_MESSAGE : undefined)
 
 const joined = (failure: Failure | undefined, note: string): Failure =>
   failure === undefined ? failed('submit', note) : { ...failure, reason: `${failure.reason}; ${note}` }
@@ -220,11 +229,19 @@ const putIn = async (io: Io, state: State, typing: string, failure: Failure | un
 
 // Puts in what is still held, until nothing is left. The last look and the end of holding are one step with no wait between
 // them, so that nothing typed in between is held and then forgotten.
-const release = async (io: Io, state: State, failure: Failure | undefined): Promise<Failure | undefined> => {
+// `done` ends the holding: a handover's by default, or the writing of the handoff after a long pause.
+export const release = async (
+  io: Io,
+  state: State,
+  failure: Failure | undefined,
+  done: () => void = () => {
+    state.handingOver = false
+  },
+): Promise<Failure | undefined> => {
   for (;;) {
     const late = state.held.splice(0)
     if (late.length === 0) {
-      state.handingOver = false
+      done()
       return failure
     }
     failure = await putIn(io, state, late.join('\n\n'), failure)
@@ -388,7 +405,19 @@ export const prepareInternally = async (io: Io): Promise<Prepared | Failure> => 
   else io.log('warn', `internal handoff gave nothing (${modelForkKind(answer)}), ${took}`)
   if (!answer.isAnswered) return failed('model-fork', `the mod could not write the handoff: ${modelForkFailure(answer)}`)
   if (answer.text.trim() === '') return failed('model-fork', 'the mod could not write the handoff: the model replied with no text')
-  return answer.usage === undefined ? { text: firstMessage(answer.text) } : { text: firstMessage(answer.text), usage: answer.usage }
+  return answer.usage === undefined ? { text: firstMessage(answer.text), began } : { text: firstMessage(answer.text), usage: answer.usage, began }
+}
+
+// The handoff written ahead in a long pause: by the user's command when that is the way, else by the mod. A compact is never used, since a
+// warm return must find the whole context, and `throughMethods` is not either: whatever the command's failure, it has changed nothing but
+// add its own turn, so the mod writes the handoff unless the fallback is none.
+export const prepare = async (io: Io, state: State, config: Config): Promise<Prepared | Failure> => {
+  if (config.handoffMethod !== 'external-command') return prepareInternally(io)
+  const first = await prepareByCommand(io, state, config.handoffCommand)
+  if (!isFailure(first) || config.handoffFallback === 'none') return first
+  io.log('warn', `idle: the command gave no handoff (stage ${first.stage}), the mod writes it`)
+  const second = await prepareInternally(io)
+  return isFailure(second) ? { ...second, reason: `${first.reason}; ${second.reason}` } : second
 }
 
 const throughInternalHandoff = async (io: Io, state: State): Promise<Failure | undefined> => {

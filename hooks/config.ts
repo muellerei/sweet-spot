@@ -19,6 +19,9 @@ export type Config = {
   handoffMethod: Method
   handoffFallback: Method | 'none'
   handoffCommand: string
+  // The handoff after a long pause: on or off, and the context size it starts at. 0: the session's baseline plus a fixed distance.
+  idleHandoff: boolean
+  idleHandoffMinTokens: number
 }
 export type ConfigResult = { ok: true; config: Config } | { ok: false; errors: string[] }
 
@@ -35,6 +38,8 @@ export const DEFAULTS: Config = {
   handoffMethod: 'internal-handoff',
   handoffFallback: 'builtin-compact',
   handoffCommand: '',
+  idleHandoff: true,
+  idleHandoffMinTokens: 0,
 }
 
 // The same number is `min` and the text of `threshold` in plugin.json and the README; the tests cannot read those files, so a change here
@@ -102,6 +107,8 @@ export const configOf = (options: Record<string, unknown>): ConfigResult => {
     handoffMethod: take('handoff_method', DEFAULTS.handoffMethod, oneOf(METHODS)),
     handoffFallback: take('handoff_fallback', DEFAULTS.handoffFallback, oneOf([...METHODS, 'none'] as const)),
     handoffCommand: take('handoff_command', DEFAULTS.handoffCommand, commandName),
+    idleHandoff: take('idle_handoff', DEFAULTS.idleHandoff, flag),
+    idleHandoffMinTokens: take('idle_handoff_min_tokens', DEFAULTS.idleHandoffMinTokens, raw => finiteAtLeast(raw, 0, true)),
   }
   // The same way twice is no second try. Done before the rule below, so that one field asking for the command is told once.
   if (config.handoffFallback === config.handoffMethod) config.handoffFallback = 'none'

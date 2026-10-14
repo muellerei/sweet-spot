@@ -67,7 +67,8 @@ export const shrunk = <T extends { from: number }>(mark: T | undefined, tokens: 
   mark === undefined || tokens === undefined || tokens >= mark.from ? mark : undefined
 export const laterAt = shrunk<Later>
 
-const busyReason = (s: Snapshot): BusyReason | undefined =>
+// The one rule of what counts as running work, for the pause and for coming back after a long one.
+export const busyReason = (s: Pick<Snapshot, 'subagents' | 'backgroundTasks' | 'oneShotTimers'>): BusyReason | undefined =>
   s.subagents > 0 ? 'subagent' : s.backgroundTasks > 0 ? 'background-task' : s.oneShotTimers > 0 ? 'one-shot-timer' : undefined
 
 // Over when the minutes or the turns have passed, so a count of turns that starts over with a fresh session cannot hold the lock for good.

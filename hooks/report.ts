@@ -39,7 +39,7 @@ export const REDELIVERING = 'redelivering the handoff'
 export const NOTHING_TO_REDELIVER = 'nothing to redeliver'
 
 const USAGE =
-  'use `/sweet-spot status` to see where the context stands, `/sweet-spot later [tokens]` to move the next handover back, `/sweet-spot asap` to hand over at the next pause, or `/sweet-spot redeliver` to submit again the handoff that did not reach the fresh session'
+  'use `/sweet-spot status` to see where the context stands, `/sweet-spot later [tokens]` to move the next handover back or drop the idle handoff, `/sweet-spot asap` to hand over at the next pause, or `/sweet-spot redeliver` to submit again the handoff that did not reach the fresh session'
 
 // An argument the command does not know is named, so that a guess like `wait 10000` does not read as a hint about something else.
 export const usageFor = (args: string): string => (args.trim() === '' ? USAGE : `unknown argument "${args}", ${USAGE}`)
@@ -79,3 +79,21 @@ export const CONTEXT_UNKNOWN = 'context size unknown, try again after the next a
 
 // The emergency brake: past it the handoff goes ahead although work is running.
 const overrode = (forced: BusyReason | undefined): string => (forced === undefined ? '' : `, although ${BUSY[forced]} (emergency brake)`)
+
+// The handoff after a long pause could not be written: nothing changed, and the return goes on in this session.
+export const notPreparedLine = (reason: string) => `could not prepare the idle handoff (${reason}), the session goes on as is`
+
+// Coming back after a long pause, once the handoff was written.
+export const switchedLine = (idle: string): string => `fresh session after ${idle} idle, the old one is in /resume`
+
+export const WORK_STAYS = 'work is still running and would report into a fresh session, so this message stays in this session'
+
+export const ATTACHMENTS_STAY = 'attachments cannot be carried over, so this message stays in this session'
+
+// The band above the prompt once the handoff written has gone cold; it has no key, since a digit in an empty prompt would be read as one.
+export const COLD_BAND = 'the cache has expired, your next message starts a fresh session with a handoff (/sweet-spot later to stay here)'
+
+// In front of the answer of `later` that dropped the handoff written.
+export const IDLE_DROPPED = 'idle handoff dropped, your next message stays in this session. '
+
+export const DRY_RUN_RETURN = 'dry run, would start a fresh session with the idle handoff now'
