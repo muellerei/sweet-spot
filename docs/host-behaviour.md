@@ -329,7 +329,8 @@ least 2.1.295 and is switched on from the server, so it can appear without an up
 - **What a mod can read.** `idleCompaction` through `$.settings.read()` and the environment variable through `$.env.get`; the server's
   value it cannot see. _Assumed: the 2.1.300 types._
 
-What sweet-spot does with it today: a compact it did not start ends the idle handoff's pause, as any compact does.
+What sweet-spot does with it: it lets the compaction run, and the compaction ends the idle handoff's pause, as any compact does. The
+mod does not answer `{ skip }`, so the person's settings decide (`threshold`, `idleCompaction`).
 
 ## Measuring again
 

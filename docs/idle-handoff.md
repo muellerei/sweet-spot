@@ -100,7 +100,9 @@ Since 2.1.299 Claude Code can compact a long idle session itself, a minute befor
 | What it keeps                   | Claude Code's summary                                           | What the handoff prompt asks for, or the file of your own command  |
 | Switched on by                  | Claude Code's server, so it may or may not run in your sessions | `idle_handoff`, on by default                                      |
 
-Today Claude Code's compaction comes first: in a session it compacts, the idle handoff writes nothing. To have the idle handoff for
+Claude Code's compaction comes first: in a session it compacts, the idle handoff writes nothing. The mod could stop it and leaves it
+alone on purpose, so that your settings decide: `threshold` (200,000 by default) hands a session over at its first pause past that
+size, before Claude Code's compaction comes, and Claude Code's own setting switches its compaction off. To have the idle handoff for
 large sessions too, set `"idleCompaction": false` in your `settings.json`. If you would rather stay in the same session, change nothing;
 below 200,000 tokens the idle handoff works as before.
 
