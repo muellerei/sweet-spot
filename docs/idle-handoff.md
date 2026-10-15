@@ -87,6 +87,23 @@ about 0.1·C for reading the cache plus 5·H for the output. Against that:
 | between minute 60 and about 115 | 0.1·C + 5·H for the writing, then 0.1·C for the read, still warm    | 2·C, everything written again |
 | after about minute 115          | 0.1·C + 5·H for the writing, then 2·S₀ plus what Claude reads again | 2·C                           |
 
+## Claude Code's own idle compaction
+
+Since 2.1.299 Claude Code can compact a long idle session itself, a minute before the idle handoff would write
+([how it behaves](host-behaviour.md#idle-compaction)). Both deal with the cache that goes cold after an hour, in different ways:
+
+|                                 | Claude Code's idle compaction                                   | Idle handoff                                                       |
+| ------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------ |
+| When                            | Minute 54 of a pause, from 200,000 tokens                       | Minute 55, from the baseline plus 30,000 tokens                    |
+| Back within about an hour after | The session is already compacted, the full history is gone      | Nothing has changed: the full context, and the cache is still warm |
+| Back later                      | The same session, compacted                                     | A fresh session with the handoff; the old one stays in `/resume`   |
+| What it keeps                   | Claude Code's summary                                           | What the handoff prompt asks for, or the file of your own command  |
+| Switched on by                  | Claude Code's server, so it may or may not run in your sessions | `idle_handoff`, on by default                                      |
+
+Today Claude Code's compaction comes first: in a session it compacts, the idle handoff writes nothing. To have the idle handoff for
+large sessions too, set `"idleCompaction": false` in your `settings.json`. If you would rather stay in the same session, change nothing;
+below 200,000 tokens the idle handoff works as before.
+
 ## Limits
 
 - **Only with an hour of cache.** With five minutes the handoff would have to be written after four minutes of every pause. Claude Code
@@ -101,6 +118,8 @@ about 0.1·C for reading the cache plus 5·H for the output. Against that:
 - **System sleep.** Timers fire late after sleep. If the computer slept before minute 55, the cache is cold by then and nothing is
   written. If it slept after, the band comes with the first key you type; if you paste and send at once, you do not see it, and the line
   after the switch points to `/resume`.
+- **Claude Code's own idle compaction** comes first from 200,000 tokens, and no handoff is written then. See
+  [Claude Code's own idle compaction](#claude-codes-own-idle-compaction).
 - **What the mod cannot see.** A `!` command runs before the mod sees anything, and its turn ends the pause. Another mod that keeps the
   cache warm with its own requests is invisible to sweet-spot: it then takes the cache for cold and switches when it need not.
 - **Your status line.** Claude Code's own status line does not count the request that writes the handoff and shows the cache as expired
