@@ -15,7 +15,7 @@ why rests on.
 
 Contents: [Events and their order](#events-and-their-order) · [`/clear` and the session](#clear-and-the-session) · [Loading](#loading) ·
 [Reload](#reload) · [Commands](#commands) · [`$.model.fork`](#modelfork) · [`$.session.compact`](#sessioncompact) ·
-[Output](#output) · [Environment](#environment) · [Running more than one](#running-more-than-one) · [Inside the mod](#inside-the-mod) ·
+[Idle compaction](#idle-compaction) · [Output](#output) · [Environment](#environment) · [Running more than one](#running-more-than-one) · [Inside the mod](#inside-the-mod) ·
 [Testing inside the host](#testing-inside-the-host) · [Measuring again](#measuring-again) · [Open](#open)
 
 ## Events and their order
@@ -292,6 +292,45 @@ throwaway mod for the veto. Interactive runs through tmux, from the veto on thro
   turn. _Measured 2026-10-08, Claude Code 2.1.294; throwaway
   mod, headless `claude -p`._ In a headless test, await the call inside the hook.
 
+## Idle compaction
+
+Claude Code compacts a long session on its own while it sits idle, shortly before the prompt cache expires. It is in the build since at
+least 2.1.295 and is switched on from the server, so it can appear without an update. Claude Code's changelog announces it for 2.1.299
+("a 200K+ token conversation left idle for about 54 minutes is compacted before its one-hour prompt cache expires"), together with
+`CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS` and `"idleCompaction": false`. The code is the same in 2.1.301 as in 2.1.300.
+
+- **It compacts at minute 54 of a pause and comes before the idle handoff.** A session at 210158 tokens planned the idle handoff for 55
+  minutes after its last request; 54 minutes after that request the host compacted the session itself (`trigger: "auto"`, 211993 to
+  15314 tokens, 38 s) and added the line "Compacted while idle, before the prompt cache expired". The mod saw `session.compact`, ended
+  the pause and had written nothing. _Measured 2026-10-15, Claude Code 2.1.300; a live session with the diagnostic lines at `debug`, the
+  transcript and the mod's lines._ The same line is in transcripts of 2.1.295 and 2.1.296.
+- **The session stays.** The session id and the transcript file stay, a `compact_boundary` entry marks the compact, and a few of the
+  last messages are kept word for word. _Measured, same run._
+- **When it fires.** At a fraction of the cache lifetime after the last activity, 0.9 by default (kept between 0.5 and 0.95), so minute
+  54 with an hour of cache. Only with an hour of cache, a warm cache, auto-compact on, no newer request and rate limits not near. _Assumed:
+  the 2.1.300 bundle says so._
+- **From what size.** `CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS`, otherwise a value from the server, 200000 by default, never below 100000.
+  The idle handoff starts at about 80000, so below the host's line it is the only one at work. _Assumed: the 2.1.300 bundle says so._
+- **Switching it off.** The setting `idleCompaction: false` in `settings.json`; in the host's words, "Set to false to stop Claude Code
+  from compacting a long conversation while the session is idle. Setting it to true does not turn idle compaction on." Turning
+  auto-compact off stops it too. _Assumed: the 2.1.300 settings schema says so._
+- **A second mode.** The bundle also has a mode that writes the summary ahead and puts it in only when you come back ("Compacted after
+  an hour idle, using a summary written while you were away"). Whether the server switches it on for anyone is open.
+
+- **A mod can stop it.** It reaches a mod as `session.compact` with `trigger: "auto"`, no `agentId`, while no turn runs. A hook that
+  answers `{ skip }` leaves the session as it is, and the host does not try again in that pause. _Measured 2026-10-15, Claude Code
+  2.1.300; a throwaway mod, a session at 181436 tokens with the lower bound set to 100000; the compact came 53:58 minutes after the last
+  turn and left no `compact_boundary`._ No line of the host's showed the skip in the terminal.
+- **The lower bound is read when it fires.** A mod's `$.env.set('CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS', …)` during the session moves it:
+  set to 100000000 after the first turn, a session at 146604 tokens was not compacted, while a second session with the same setup was.
+  _Measured 2026-10-15, Claude Code 2.1.300; same throwaway mod, both sessions side by side._
+- **Not where an organisation manages Claude Code.** There the `session.compact` hooks of a plugin the person installed do not run, so
+  a mod cannot stop it. _Assumed: `claude plugin validate` says so for every `session.compact` hook._
+- **What a mod can read.** `idleCompaction` through `$.settings.read()` and the environment variable through `$.env.get`; the server's
+  value it cannot see. _Assumed: the 2.1.300 types._
+
+What sweet-spot does with it today: a compact it did not start ends the idle handoff's pause, as any compact does.
+
 ## Measuring again
 
 When the version the mod is developed against goes up (the first entry of the CI matrix), these measurements are taken again, because
@@ -309,6 +348,11 @@ For the countdown:
 - the history, Tab on a suggestion and `$.prompt.fill` fill the prompt with no `prompt.edit` (measured, under Commands)
 - a value written in the `ui.render` hook when a survey comes up or goes (the write is measured, the change to "survey present" is not)
 - a compact raises no `session.end` (derived, not measured: see Open)
+
+For the idle handoff:
+
+- the host's idle compaction: the minute it fires, its lower bound, `idleCompaction: false` keeping it off, a `{ skip }` stopping it,
+  and `$.env.set` moving its lower bound
 
 ## Open
 
