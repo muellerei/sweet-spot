@@ -4,6 +4,8 @@ All notable changes to sweet-spot are listed here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-15
+
 ### Added
 
 - `/sweet-spot asap` hands over at the next pause, wherever the context stands: it lifts the threshold and the minimum gap, has no countdown, and is spent by the handover it starts. Work that is running still holds it back, until the emergency brake. Typed while no answer runs, it judges at once from what the last stop reported and what runs now, and starts the handover a moment after its answer. It ends a running countdown, a compact or `/clear` of your own, the end of the session and a context that has shrunk below where it was asked, and `later` after it takes it back. The help and the menu name it.
@@ -18,6 +20,11 @@ All notable changes to sweet-spot are listed here. The format follows [Keep a Ch
 - `/sweet-spot status` names a standing `asap` (`asap: hands over at the next pause`), and after it the idle handoff: planned with the minutes until it is written, written with the time its cache runs out, or written and cold. It says nothing of it while none is planned or written.
 - Coming back after a long pause with the handoff written: the first message you send takes the handoff at once, so a second one sent right after never sees it too, and is judged by the clock. With the cache expired the message is held, `/clear` starts a fresh session and the handoff goes in with your message after it; a line then says how long the session sat idle and that the old one is in `/resume`, and the message is cleared from the prompt unless you changed it meanwhile. The switch spends `later` and `asap` like any handover, and fails like one: before `/clear` the message goes into the session as it was, after it `/sweet-spot redeliver` submits it. With the cache still warm the message goes into this session and the handoff written is dropped. Running work (a subagent, a background task) and an attachment keep the message in this session too, and a line says why. Slash commands and what other parts of the system send go through and leave the handoff for later. In a dry run a line says it would have switched, and the message goes into this session.
 - The idle handoff has its own page, [docs/idle-handoff.md](docs/idle-handoff.md): when a fresh session is worth it, what happens, the costs and the limits. The README names it, the transcript read and the one process it starts, and that `/resume` leads back to the old session after any handoff.
+
+### Limits found
+
+- From 2.1.299 Claude Code can compact an idle session of 200,000 tokens or more itself at minute 54, a minute before the idle handoff would write; that session gets no handoff. The mod lets it run on purpose: `threshold` hands a session over at its first pause past that size, and `"idleCompaction": false` in `settings.json` leaves the pause to the mod. The reasoning is in [#9](https://github.com/muellerei/sweet-spot/issues/9), the comparison in [docs/idle-handoff.md](docs/idle-handoff.md#claude-codes-own-idle-compaction).
+- Where an organisation manages Claude Code, the mod does next to nothing: some of the events it relies on reach only plugins listed in the managed settings. This comes from `claude plugin validate`, not from a managed installation.
 
 ## [0.1.0] - 2026-10-11
 
