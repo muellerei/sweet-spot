@@ -43,6 +43,8 @@ Two ways to turn it on:
 
 Leave it out of `~/.claude/settings.json`, or every session everywhere logs. Lines from before a handoff's `/clear` vanish from the window; start with `--debug-file <path>` to keep them. Events from before the variable was set cannot be logged after the fact, so a test run that looks for a rare event starts with it set.
 
+A reload of the mod while a handoff runs, as after saving a file under `hooks/` or `plugin.json`, drops what the mod knows about that handoff. The end of the handoff command's turn then counts as a pause and a second handoff starts, which shows as two `handing over now` lines about a minute apart. This only happens in a working clone, so let a handoff finish before you save.
+
 ## Pictures
 
 The banner and the drawings in `docs/images/` are made by small Python scripts in `docs/src/`, so a picture can be rebuilt instead of edited by hand: `sh docs/src/build.sh` (Python 3, nothing to install). The drawings say "Drawn, not recorded", in the picture or under it in the README, and the numbers in them are the measured ones from the README, kept as constants in `docs/src/common.py` and at the top of each script. `python3 docs/src/check.py` compares those, the README, `plugin.json` and the pinned Claude Code version in the workflow, and CI runs it, so a number changed in one place and not the others fails. If a change alters what a picture shows, change the script, rebuild, and look at the result in a browser, since the pictures move. Only `docs/images/social-preview.png` is not built by `build.sh`: it is the output of `python3 docs/src/banner.py <folder> --social`, rendered to 1280 by 640 pixels, for example with headless Chrome (`--screenshot`, `--window-size=1280,640`).
