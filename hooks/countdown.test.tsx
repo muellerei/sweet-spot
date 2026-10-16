@@ -6,6 +6,7 @@ import {
   answered,
   compactByHand,
   COMPACT_DONE,
+  COMPACT_VETO,
   COMPACTED,
   COMPACTING,
   DUE,
@@ -466,6 +467,22 @@ modTest('a compact by hand ends the countdown without a handover, a precompute d
   expect(await shown(ui)).toBeUndefined()
   await world.clock.advance(60_000)
   expect(host.steps).toEqual(['compact', 'compact manual'])
+})
+
+// The countdown ends before the compact runs, so that no handover starts while it does. One that another hook holds back costs it, and the
+// next pause counts down again.
+modTest('a compact by hand that another hook holds back ends the countdown too, and the next pause counts down again', TEN, async ($, on) => {
+  withMod(on)
+  const world = sessionWith(on)
+  const host = hostWith(on, { manualCompact: COMPACT_VETO })
+  await raiseHandoff($)
+  const ui = await band($)
+  await compactByHand($)
+  expect(await shown(ui)).toBeUndefined()
+  await world.clock.advance(60_000)
+  expect(host.steps).toEqual(['compact manual'])
+  await raiseHandoff($)
+  expect(await shown(ui)).toBeDefined()
 })
 
 modTest('the end of the session ends the countdown without a handover, as a /clear by hand does', TEN, async ($, on) => {

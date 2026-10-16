@@ -3,6 +3,8 @@ import { expect } from 'claude-code/testing'
 import { FIVE_TRANSCRIPT, HOUR_TRANSCRIPT, LIVE_IDLE, T, answer, band, idleLines, idleSession, modelSwitch, shown, typeKey } from './idle-support'
 import {
   answered,
+  COMPACT_DONE,
+  COMPACT_VETO,
   endTurn,
   hostWith,
   MINUTE,
@@ -58,7 +60,10 @@ modTest('a new turn before then ends the pause, and its own end plans again from
 
 // What ends a pause besides a new turn, with the line `endPause` gives for it.
 const sessionEnd = ($: TestEngine) => $.session.end({ sessionId: 'old', reason: 'clear' } as never)
-const compact = ($: TestEngine) => $.session.compact({ trigger: 'manual', messages: [] } as never)
+const MESSAGES = [{ role: 'user', text: 'old', toolUses: [] }]
+const compact = ($: TestEngine) => $.session.compact({ trigger: 'manual', messages: MESSAGES } as never)
+// The host's own compact, at minute 54 of a long pause.
+const autoCompact = ($: TestEngine) => $.session.compact({ trigger: 'auto', messages: MESSAGES } as never)
 const ENDS = [
   ['the end of the session', sessionEnd, 'the session ended'],
   ['a compact of the main loop', compact, 'a compact'],
@@ -90,6 +95,67 @@ for (const [name, end] of ENDS) {
     await typeInto($, 'hello again')
     await world.clock.settle()
     expect(host.steps.slice(before)).toEqual(['submit hello again'])
+  })
+}
+
+// Another hook can hold a compact back with `{ skip }`: another mod, or a PreCompact hook in the settings. The session stays as it was, and
+// so does the pause. The host does not try its own compact again in that pause, so a pause it ended would leave the session with nothing.
+const HELD_BACK = [
+  ['a compact by hand', { manualCompact: COMPACT_VETO }, compact],
+  ["the host's compact while idle", { compact: COMPACT_VETO }, autoCompact],
+] as const
+
+for (const [name, host, held] of HELD_BACK) {
+  modTest(`${name} that another hook holds back leaves the pause: the handoff is written`, LIVE_IDLE, async ($, on) => {
+    const { seen, world, host: h } = idleSession(on, host)
+    await answer($)
+    await world.clock.advance(54 * MINUTE)
+    await held($)
+    await world.clock.advance(MINUTE)
+    expect(h.modelForkPrompts).toHaveLength(1)
+    expect(idleLines(seen.logs)).toContain(PREPARED)
+    expect(idleLines(seen.logs).filter(l => l.includes('pause over'))).toEqual([])
+  })
+
+  modTest(`${name} that another hook holds back keeps the handoff written`, LIVE_IDLE, async ($, on) => {
+    const { seen, world } = idleSession(on, host)
+    await answer($)
+    await world.clock.advance(55 * MINUTE)
+    expect(idleLines(seen.logs)).toContain(PREPARED)
+    await held($)
+    expect(idleLines(seen.logs).filter(l => l.includes('pause over'))).toEqual([])
+  })
+}
+
+modTest("the host's compact while idle that goes through ends the pause: nothing is written", LIVE_IDLE, async ($, on) => {
+  const { seen, world, host } = idleSession(on, { compact: COMPACT_DONE })
+  await answer($)
+  await world.clock.advance(54 * MINUTE)
+  await autoCompact($)
+  await world.clock.advance(60 * MINUTE)
+  expect(host.modelForkPrompts).toHaveLength(0)
+  expect(idleLines(seen.logs)).toContain('debug: idle: pause over, a compact')
+})
+
+// The step can come due while a compact runs (the host's took 38 s at 210000 tokens, measured): it waits for the outcome, so that nothing is
+// written of a context the compact replaces, and comes at once where another hook held the compact back.
+for (const [outcome, answer_, written] of [
+  ['goes through', COMPACT_DONE, 0],
+  ['is held back', COMPACT_VETO, 1],
+] as const) {
+  modTest(`the step due while a compact runs waits for it: the compact ${outcome}`, LIVE_IDLE, async ($, on) => {
+    const { world, host } = idleSession(on, { compact: answer_ })
+    await answer($)
+    await world.clock.advance(54 * MINUTE + 30_000)
+    let during = -1
+    host.during['compact'] = async () => {
+      await world.clock.advance(MINUTE)
+      during = host.modelForkPrompts.length
+    }
+    await autoCompact($)
+    await world.clock.settle()
+    expect(during).toBe(0)
+    expect(host.modelForkPrompts).toHaveLength(written)
   })
 }
 
