@@ -17,7 +17,8 @@ import {
 
 // What the handoff after a long pause needs to know of a session before it can plan: how long the prompt cache lives, read from the
 // transcript, and the baseline, what a fresh session of the project sends with its first message. Both are read at the end of the first
-// turn of every session, whether it began with the mod's load, a /clear or a resume.
+// turn of every session, whether it began with the mod's load, a /clear or a resume, and the transcript again at each turn while it
+// holds no answer yet.
 
 const T = '/home/me/.claude/projects/work/s1.jsonl'
 const T2 = '/home/me/.claude/projects/work/s2.jsonl'
@@ -65,6 +66,14 @@ const firstTurn = async ($: TestEngine, path = T, source: 'startup' | 'clear' | 
   await endTurn($, 'answer', { turnId })
 }
 
+// A later turn of the same session, ending in an answer.
+const laterTurn = async ($: TestEngine, turnId: string) => {
+  await startTurn($, turnId)
+  await step($, turnId)
+  await stop($, { transcript_path: T } as never)
+  await endTurn($, 'answer', { turnId })
+}
+
 const idleLines = (lines: string[]) => lines.filter(l => l.includes('idle:'))
 
 modTest('a fresh session knows the cache lifetime from its transcript and keeps the baseline of its first request for the project', async ($, on) => {
@@ -98,6 +107,43 @@ modTest('without tail the lifetime stays unknown, and that is said once a sessio
   expect(seen.logs.filter(l => l === 'warn: idle: the transcript could not be read')).toHaveLength(1)
 })
 
+// What the next turn would read says the same: a transcript that could not be read, and one whose answers wrote nothing to the cache
+// (prompt caching off). Neither is read again, and no process starts at every turn.
+for (const [name, files, sizes] of [
+  ['that cannot be read', { [T]: 'too large' }, { [T]: 5_000_000 }],
+  ['whose answers wrote nothing', { [T]: [entry(0, 0), entry(0, 0)].join('\n') }, {}],
+] as const) {
+  modTest(`a transcript ${name} is read once a session`, async ($, on) => {
+    const seen = withMod(on)
+    sessionWith(on, { tokens: 60_000 })
+    const host = hostWith(on, { logLevel: 'debug', files, sizes })
+    answersSteps(on)
+    await firstTurn($)
+    const runs = host.runs.length
+    await laterTurn($, 't2')
+    expect(idleLines(seen.logs).filter(l => l.startsWith('debug: idle: cache lifetime'))).toHaveLength(1)
+    expect(host.runs).toHaveLength(runs)
+    expect(seen.logs.filter(l => l === 'warn: idle: the transcript could not be read')).toHaveLength(name === 'that cannot be read' ? 1 : 0)
+  })
+}
+
+// At the end of the first turn of a fresh session the transcript can hold no answer yet (docs/host-behaviour.md, "the transcript can still
+// lack the turn's answer"). The next turn reads again.
+modTest('a first turn whose transcript holds no answer yet leaves the lifetime to the next turn, which reads again', async ($, on) => {
+  const seen = withMod(on)
+  sessionWith(on, { tokens: 60_000 })
+  const host = hostWith(on, { logLevel: 'debug', files: { [T]: '' } })
+  answersSteps(on)
+  await firstTurn($)
+  expect(idleLines(seen.logs)).toContain('debug: idle: cache lifetime unknown, baseline 51003 tokens')
+  host.files[T] = HOUR
+  await laterTurn($, 't2')
+  expect(idleLines(seen.logs)).toContain('debug: idle: cache lifetime 1h, baseline 51003 tokens')
+  // Once known, the next turn reads nothing.
+  await laterTurn($, 't3')
+  expect(idleLines(seen.logs).filter(l => l.startsWith('debug: idle: cache lifetime'))).toHaveLength(2)
+})
+
 modTest('after /clear the first turn of the fresh session reads again', async ($, on) => {
   const seen = withMod(on)
   sessionWith(on, { tokens: 60_000 })
@@ -105,10 +151,7 @@ modTest('after /clear the first turn of the fresh session reads again', async ($
   answersSteps(on)
   await firstTurn($)
   // A second turn of the same session reads nothing.
-  await startTurn($, 't2')
-  await step($, 't2')
-  await stop($, { transcript_path: T } as never)
-  await endTurn($, 'answer', { turnId: 't2' })
+  await laterTurn($, 't2')
   expect(idleLines(seen.logs).filter(l => l.startsWith('debug: idle: cache lifetime'))).toHaveLength(1)
   await $.session.end({ sessionId: 'old', reason: 'clear' } as never)
   await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })

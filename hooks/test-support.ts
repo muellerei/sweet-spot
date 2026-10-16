@@ -304,6 +304,7 @@ export const hostWith = (on: TestOn, host: Partial<Host> = {}) => {
     return {}
   })
   on('fs.read', async (_, e) => {
+    await once(h, 'fs.read')
     const text = h.files[e.path]
     if (text === undefined) return { deny: `no such file: ${e.path}` }
     return { value: text } as never

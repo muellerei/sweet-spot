@@ -6,6 +6,8 @@ All notable changes to sweet-spot are listed here. The format follows [Keep a Ch
 
 ### Fixed
 
+- A fresh session never planned the handoff after a long pause. The cache lifetime was read from the transcript once, at the end of the first turn, and Claude Code had not always written that turn's answer there yet; the lifetime stayed unknown for the whole session, and nothing was planned. Where the transcript holds no answer yet, the mod now reads it once more five seconds later and plans the pause from that read, and the next turn reads again as well ([#20](https://github.com/muellerei/sweet-spot/issues/20)).
+
 - A compact that another hook held back still ended the pause: the handoff planned for minute 55 was never written, and one already written was dropped. Another mod, or a `PreCompact` hook in your settings, can answer a compact with `{ skip }`, and Claude Code does not try its own compact at minute 54 of a pause again, so the session was left with neither and the cache went cold. The pause now waits for the outcome: a compact held back or failed leaves it as it was, one that goes through ends it as before, and a handoff that comes due while a compact runs waits for it. A countdown still ends when a compact starts, so that no handover starts while it runs; it counts down again at the next pause ([#17](https://github.com/muellerei/sweet-spot/issues/17)).
 
 ## [0.3.0] - 2026-10-16

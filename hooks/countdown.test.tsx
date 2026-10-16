@@ -586,7 +586,9 @@ modTest('a session that cannot be read when the countdown runs out ends it witho
   await world.clock.advance(10_000)
   expect(host.steps).toEqual([])
   expect(await shown(ui)).toBeUndefined()
-  expect(seen.logs).toEqual(['warn: countdown: could not read the session when it ran out'])
+  // The end of the turn came before the stop that gave the transcript's path, so the pause reads it a few seconds later, and the fake
+  // session has none: the idle handoff warns of that on its own.
+  expect(seen.logs.filter(l => l.includes('countdown'))).toEqual(['warn: countdown: could not read the session when it ran out'])
 })
 
 modTest('a second stop of the same answer leaves the running countdown as it is, and its deadline with it', TEN, async ($, on) => {

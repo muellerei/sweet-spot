@@ -202,6 +202,10 @@ Contents: [Events and their order](#events-and-their-order) · [`/clear` and the
 - **`turn.step` comes once per request of the main loop,** with `index` from 0 at the start of the turn and `usage` with the four token
   counts. The split into five-minute and one-hour writes is only in the transcript. _Measured 2026-10-13, Claude Code 2.1.296._ The
   start of a step is when the cache was last read; the step with index 0 of a fresh session gives the baseline.
+- **At the end of the first turn of a fresh session the transcript can still lack the turn's answer.** The two answer entries of the first
+  request carried times 0.21 s and 0.08 s before the mod's log line of its read at the end of the turn, and the read found no write in the
+  file; the file holds both. _Measured 2026-10-17, Claude Code 2.1.302; one live session through herdr, read through `--debug-file`._ The
+  mod reads the transcript once more five seconds later, and again at the next turn, while it holds no answer.
 
 ## `$.session.compact`
 
