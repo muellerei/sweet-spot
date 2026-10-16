@@ -68,6 +68,31 @@ test('bandOf: a narrow band drops the threshold first, then the context, and kee
   expect(drawn(band(), 10)).toBe('Compacting in 8 s · 1: Not now, +25000')
 })
 
+test('bandOf: a standing task is named after the context, several by their number, a long one cut short', async () => {
+  expect(drawn(band({ running: ['npm run dev'] }), WIDE)).toBe('Compacting in 8 s · context 203000 of 200000 · npm run dev keeps running · 1: Not now, +25000')
+  expect(drawn(band({ running: ['npm run dev', 'tail -f'] }), WIDE)).toBe(
+    'Compacting in 8 s · context 203000 of 200000 · 2 tasks keep running · 1: Not now, +25000',
+  )
+  expect(drawn(band({ running: ['abcdefghijklmnopqrstuvwxyz0123456789'] }), WIDE)).toBe(
+    'Compacting in 8 s · context 203000 of 200000 · abcdefghijklmnopqrstuvwxyz012… keeps running · 1: Not now, +25000',
+  )
+  expect(drawn(band({ running: ['abcdefghijklmnopqrstuvwxyz0123'] }), WIDE)).toBe(
+    'Compacting in 8 s · context 203000 of 200000 · abcdefghijklmnopqrstuvwxyz0123 keeps running · 1: Not now, +25000',
+  )
+  expect(drawn(band({ running: [] }), WIDE)).toBe('Compacting in 8 s · context 203000 of 200000 · 1: Not now, +25000')
+})
+
+test('bandOf: a narrow band drops what keeps running first, then the threshold, then the context', async () => {
+  const full = 'Compacting in 8 s · context 203000 of 200000 · npm run dev keeps running · 1: Not now, +25000'
+  const running = band({ running: ['npm run dev'] })
+  expect(drawn(running, full.length)).toBe(full)
+  expect(drawn(running, full.length - 1)).toBe('Compacting in 8 s · context 203000 of 200000 · 1: Not now, +25000')
+  expect(drawn(running, 'Compacting in 8 s · context 203000 of 200000 · 1: Not now, +25000'.length - 1)).toBe(
+    'Compacting in 8 s · context 203000 · 1: Not now, +25000',
+  )
+  expect(drawn(running, 10)).toBe('Compacting in 8 s · 1: Not now, +25000')
+})
+
 test('isLate: more than 3 s past the deadline, not 3 s itself', async () => {
   expect(isLate(10_000, 12_900)).toBe(false)
   expect(isLate(10_000, 13_000)).toBe(false)

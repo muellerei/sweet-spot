@@ -2,8 +2,11 @@
 // turn ended. The host sends the stop first (docs/host-behaviour.md, Events and their order), and either order is taken. This is the one place that knows
 // the pairing, so that the hooks only record what they saw and the judge asks once.
 
+// A background task as `classic.Stop` lists it. `command` comes with a `shell` task only, cut at 1000 characters (docs/host-behaviour.md).
+export type TaskSummary = { id: string; type: string; status: string; description: string; command?: string }
+
 // What `classic.Stop` brings that the mod reads.
-export type Stop = { background_tasks?: { status: string }[]; session_crons?: { recurring: boolean }[] }
+export type Stop = { background_tasks?: TaskSummary[]; session_crons?: { recurring: boolean }[] }
 
 export type TurnEnd = 'answer' | 'aborted' | 'error' | 'refusal'
 

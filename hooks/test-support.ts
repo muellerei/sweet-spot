@@ -1,7 +1,7 @@
 // What the tests share: the floor beneath the mod's calls and the questions a test asks of it.
 
 import { mock, test, type TestBody, type TestOptions, type TestRest } from 'claude-code/testing'
-import type { TurnEnd } from './pairing'
+import type { TaskSummary, TurnEnd } from './pairing'
 
 export type TestEngine = Parameters<TestBody>[0]
 export type TestOn = Parameters<TestBody>[1]
@@ -153,7 +153,8 @@ export const sessionWith = (on: TestOn, world: Partial<World> = {}) => {
   return Object.assign(w, { clock: mock.clock(sleptOn) })
 }
 
-type StopInput = { background_tasks?: { status: string }[]; session_crons?: { recurring: boolean }[]; agent_id?: string }
+// Every field of a task but `status` may be left out, so a test names only what it is about.
+type StopInput = { background_tasks?: (Partial<TaskSummary> & { status: string })[]; session_crons?: { recurring: boolean }[]; agent_id?: string }
 
 // The end of an answer, as the host raises it for the classic hook.
 export const stop = ($: TestEngine, input: StopInput = {}) => $.classic.Stop({ stop_hook_active: false, ...input } as never)

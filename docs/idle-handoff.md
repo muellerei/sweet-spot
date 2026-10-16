@@ -36,7 +36,8 @@ conversation again.
 4. **When you send a message**, the mod looks at the clock:
    - Cache still warm: the message goes into this session as usual, and the handoff written is dropped. Reading on is cheap.
    - Work still running (a subagent, a background task): the message stays in this session, because the result of that work would come
-     into a fresh session that cannot place it. A line says so.
+     into a fresh session that cannot place it. A line says so. A dev server, a watcher or `tail -f` is no such work: it never ends, so
+     it does not keep the message here, and the first message of the fresh session names it with its command.
    - A message with an attachment: it stays in this session with its attachment, since the mod cannot carry attachments over. A line
      says so.
    - Cache cold: the message is held for a moment, the mod runs `/clear`, and submits the handoff with your message under it as the first

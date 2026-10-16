@@ -265,6 +265,19 @@ throwaway mod for the veto. Interactive runs through tmux, from the veto on thro
 - **The name of the variable must be a literal at the call.** _Assumed: the types require it._ Read each variable by its own call, not
   through a helper that takes the name.
 
+## Background tasks in the stop
+
+- **Each task in `background_tasks` has `id`, `type`, `status`, `description`, and `command` for a shell task.** _Measured 2026-10-16,
+  Claude Code 2.1.300 and 2.1.296; throwaway mod that wrote the raw list of each stop, `npm run dev` started with `run_in_background`._
+  Both versions gave the same five fields: `{ "type": "shell", "status": "running", "description": "Start dev server in background",
+"command": "npm run dev" }`. The host's types add that `command` is cut at 1000 characters with `... [+N chars]`; the mod reads only the
+  part shown, and of that not the pipeline the cut ran through: what was cut off can end it (`| grep -m1 READY`, `-d`, the
+  `:seed` of `dev:seed`).
+- **Bare `vitest` ends in the background, `vitest --watch` does not.** _Measured 2026-10-16, Claude Code 2.1.301, Vitest 5.0.5; both
+  started with `run_in_background` in a throwaway project._ A background task has no terminal: bare `vitest` had finished with exit code 0
+  before the first stop, while `vitest --watch` was `running` at three stops in a row. The same in a shell with no terminal and stdin from
+  `/dev/null`. So bare `vitest` is no standing task, and a script named `test:watch` that runs it is none either.
+
 ## Running more than one
 
 - **Two Claude Code processes with the mod run side by side without trouble.** _Measured 2026-10-08 and 2026-10-09, version not

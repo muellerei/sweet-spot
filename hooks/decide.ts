@@ -1,6 +1,8 @@
 // Whether to hand over now. Pure: the caller takes the snapshot, acts on the answer, and keeps the record of the last attempt.
 
 import type { Config } from './config'
+import type { TaskSummary } from './pairing'
+import { standing } from './standing'
 
 export type Attempt = { at: number; turns: number }
 
@@ -16,7 +18,10 @@ export type Snapshot = {
   // Input side of the last answer; undefined in a fresh session and after /clear.
   tokens: number | undefined
   window: number
+  // Waiting tasks: running, standing ones excluded. A dev server never ends, and nothing waits for its result.
   backgroundTasks: number
+  // Running tasks that never end by themselves; they hold nothing back, and the pause line names how many there are.
+  standingTasks: number
   oneShotTimers: number
   subagents: number
   now: number
@@ -79,7 +84,11 @@ const withinGap = (s: Snapshot, config: Config): boolean =>
 // The statuses after which a task no longer wakes the session.
 const FINAL = new Set(['completed', 'failed', 'killed', 'stopped', 'cancelled', 'canceled', 'error'])
 
-export const activeTasks = (tasks: readonly { status: string }[] | undefined): number => (tasks ?? []).filter(t => !FINAL.has(t.status)).length
+export const running = (tasks: readonly TaskSummary[] | undefined): TaskSummary[] => (tasks ?? []).filter(t => !FINAL.has(t.status))
+
+// What a handover waits for, and what it does not: a running task is one or the other.
+export const waiting = (tasks: readonly TaskSummary[] | undefined): TaskSummary[] => running(tasks).filter(t => !standing(t))
+export const standingOf = (tasks: readonly TaskSummary[] | undefined): TaskSummary[] => running(tasks).filter(standing)
 
 // A recurring timer is a standing loop: it would not end by waiting.
 export const oneShots = (crons: readonly { recurring: boolean }[] | undefined): number => (crons ?? []).filter(c => !c.recurring).length

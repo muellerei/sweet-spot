@@ -205,6 +205,39 @@ modTest('the emergency brake hands over despite running work, and says what it o
   expect(seen.logs).toEqual([`${DRY(350_000)}, although a background task is running (emergency brake)`])
 })
 
+const shell = (command: string, status = 'running') => ({ id: `b ${command}`, type: 'shell', status, description: 'in the background', command })
+
+modTest('a dev server in the background does not postpone the handoff', DRY_RUN, async ($, on) => {
+  const seen = withMod(on)
+  sessionWith(on, { tokens: 230_000 })
+  await startSession($)
+  await pause($, { background_tasks: [shell('npm run dev'), shell('npm run build', 'completed')] })
+  expect(seen.logs).toEqual([DRY(230_000)])
+})
+
+for (const [name, running] of [
+  ['work that ends', [shell('npm run build')]],
+  ['work that ends next to a dev server', [shell('npm run dev'), shell('npm run build')]],
+  ['a CI watch', [shell('gh pr checks 8 --watch')]],
+  ['a subagent in the background', [{ id: 'a', type: 'subagent', status: 'running', description: 'npm run dev' }]],
+] as const) {
+  modTest(`${name} still postpones the handoff`, DRY_RUN, async ($, on) => {
+    const seen = withMod(on)
+    sessionWith(on, { tokens: 230_000 })
+    await startSession($)
+    await pause($, { background_tasks: [...running] })
+    expect(seen.logs).toEqual(['handoff postponed, a background task is running, context 230000 tokens'])
+  })
+}
+
+modTest('at the emergency brake work that ends is overridden, and a dev server next to it changes nothing', DRY_RUN, async ($, on) => {
+  const seen = withMod(on)
+  sessionWith(on, { tokens: 350_000 })
+  await startSession($)
+  await pause($, { background_tasks: [shell('npm run dev'), shell('npm run build')] })
+  expect(seen.logs).toEqual([`${DRY(350_000)}, although a background task is running (emergency brake)`])
+})
+
 modTest('a window that is small against the threshold lowers it', DRY_RUN, async ($, on) => {
   const seen = withMod(on)
   sessionWith(on, { tokens: 160_000, window: 200_000 })

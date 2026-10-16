@@ -25,6 +25,8 @@ import {
   fellBack,
   INTERNAL_HANDOFF_ALSO_FAILED,
   modTest,
+  methods,
+  ANSWERED,
 } from './test-support'
 
 // The handoff through the user's own command, with the dry run off: the command runs as a turn of its own, the end of that turn is
@@ -397,4 +399,87 @@ modTest('a stop whose reading of the session fails still ends, says so once, and
   await stop($)
   await world.clock.settle()
   expect(host.steps).toEqual([RUN])
+})
+
+// What still runs is named in the first message of the fresh session: the standing tasks, which the handover did not wait for, and at the
+// emergency brake the work it went past. Both lists come from the stop the handover was decided on.
+
+const SERVER = { id: 'b1', type: 'shell', status: 'running', description: 'Start dev server', command: 'npm run dev' }
+const BUILD = { id: 'b2', type: 'shell', status: 'running', description: 'Build', command: 'npm run build' }
+const REVIEW = { id: 'a1', type: 'subagent', status: 'running', description: 'Review the diff' }
+const STANDING = 'Still running from the previous session, not waited for because they are not expected to end by themselves:'
+const FORCED = 'Still running, the handover did not wait for them; their results arrive here:'
+
+const pauseWith = async ($: TestEngine, world: World, input: object) => {
+  await startSession($)
+  await startTurn($, 't1')
+  await endTurn($, 'answer', { turnId: 't1' })
+  await stop($, input)
+  await world.clock.settle()
+}
+
+modTest(
+  'the first message names a dev server that runs on, with its command and task, written by the mod',
+  methods('internal-handoff', 'none'),
+  async ($, on) => {
+    withMod(on)
+    const world = sessionWith(on)
+    const host = hostWith(on, { modelFork: ANSWERED })
+    await pauseWith($, world, { background_tasks: [SERVER, { ...BUILD, status: 'completed' }] })
+    const text = `Handoff from the previous session. Read it and carry on with the next step.\n\n${ANSWERED.text}\n\n${STANDING}\n- npm run dev (task b1)`
+    expect(host.steps).toEqual(['run clear', `submit ${text}`])
+  },
+)
+
+modTest('through the command the list is the one of the decision, though the command turn reads another stop', LIVE, async ($, on) => {
+  withMod(on)
+  const world = sessionWith(on)
+  const host = hostWith(on, { files: { [FILE]: NOTES } })
+  await pauseWith($, world, { background_tasks: [SERVER] })
+  await startTurn($, 't2')
+  await stop($, { background_tasks: [{ ...SERVER, id: 'b9', command: 'tail -f other.log' }] })
+  await endTurn($, 'answer', { answer: `HANDOFF_PATH: ${FILE}`, turnId: 't2' })
+  await world.clock.settle()
+  expect(host.steps).toEqual([RUN, 'run clear', `submit ${firstMessage(NOTES)}\n\n${STANDING}\n- npm run dev (task b1)`])
+})
+
+modTest('with no standing task running the first message is as it always was', methods('internal-handoff', 'none'), async ($, on) => {
+  withMod(on)
+  const world = sessionWith(on)
+  const host = hostWith(on, { modelFork: ANSWERED })
+  await pauseWith($, world, { background_tasks: [{ ...SERVER, status: 'killed' }] })
+  expect(host.steps).toEqual(['run clear', `submit ${firstMessage(ANSWERED.text)}`])
+})
+
+modTest(
+  'at the emergency brake the work it went past is named too, a subagent by its type and description',
+  methods('internal-handoff', 'none'),
+  async ($, on) => {
+    withMod(on)
+    const world = sessionWith(on, { tokens: 350_000 })
+    const host = hostWith(on, { modelFork: ANSWERED })
+    await pauseWith($, world, { background_tasks: [SERVER, BUILD, REVIEW] })
+    const sections = `${STANDING}\n- npm run dev (task b1)\n\n${FORCED}\n- npm run build (task b2)\n- subagent: Review the diff (task a1)`
+    expect(host.steps).toEqual(['run clear', `submit ${firstMessage(ANSWERED.text)}\n\n${sections}`])
+  },
+)
+
+modTest('at the emergency brake through the command the work it went past is named as well', LIVE, async ($, on) => {
+  withMod(on)
+  const world = sessionWith(on, { tokens: 350_000 })
+  const host = hostWith(on, { files: { [FILE]: NOTES } })
+  await pauseWith($, world, { background_tasks: [SERVER, BUILD] })
+  await startTurn($, 't2')
+  await endTurn($, 'answer', { answer: `HANDOFF_PATH: ${FILE}`, turnId: 't2' })
+  await world.clock.settle()
+  const sections = `${STANDING}\n- npm run dev (task b1)\n\n${FORCED}\n- npm run build (task b2)`
+  expect(host.steps).toEqual([RUN, 'run clear', `submit ${firstMessage(NOTES)}\n\n${sections}`])
+})
+
+modTest('at the emergency brake for a timer alone no work is named', methods('internal-handoff', 'none'), async ($, on) => {
+  withMod(on)
+  const world = sessionWith(on, { tokens: 350_000 })
+  const host = hostWith(on, { modelFork: ANSWERED })
+  await pauseWith($, world, { background_tasks: [SERVER], session_crons: [{ recurring: false }] })
+  expect(host.steps).toEqual(['run clear', `submit ${firstMessage(ANSWERED.text)}\n\n${STANDING}\n- npm run dev (task b1)`])
 })

@@ -104,6 +104,20 @@ modTest('the band names the way, the seconds, the context and the threshold, and
   expect(await shown(ui)).toBeUndefined()
 })
 
+for (const [command, words] of [
+  ['cd /x && PORT=3001 npm run dev > dev.log 2>&1', 'npm run dev'],
+  ['ngrok http 3000 --authtoken abc', 'ngrok http'],
+] as const) {
+  modTest(`the band says that ${words} keeps running, and nothing else of ${JSON.stringify(command)}`, TEN, async ($, on) => {
+    withMod(on)
+    sessionWith(on)
+    hostWith(on)
+    await startSession($)
+    await pause($, { background_tasks: [{ id: 'b1', type: 'shell', status: 'running', description: 'in the background', command }] })
+    expect(await shown(await band($))).toBe(`Handing over to a fresh session in 10 s · context 210000 of 200000 · ${words} keeps running · 1: Not now, +25000`)
+  })
+}
+
 modTest('a compact as the first way is named as one', { options: { ...methods('builtin-compact', 'none').options, countdown_seconds: 10 } }, async ($, on) => {
   withMod(on)
   sessionWith(on)

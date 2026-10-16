@@ -47,6 +47,9 @@ export type Start = ({ kind: 'button'; moveBack: MoveBack } | { kind: 'cap' | 'b
   method: Method
   decision: Extract<Decision, { kind: 'act' | 'dry-run' }>
   threshold: number
+  // The standing tasks the handover does not wait for, by the words their rule hit: the band names them, so that a task taken for one by
+  // mistake shows before the handover, while "Not now" can still hold it. Never the command itself, which can carry a path or a token.
+  running?: readonly string[]
 }
 
 // All the band shows, since drawing waits on nothing (the clock is a wait): the start and the seconds that the start or the last tick
@@ -69,9 +72,19 @@ export type Countdown = Band & {
 
 const SEP = ' · '
 
-// What the band says. `width` is the cells the band lays its tree out in (`bodyColumns`); a band too narrow for all of it drops ` of
-// <threshold>` first, then the context, and always keeps the way with the seconds and the end: the button, or for a countdown with none,
-// what it is. `text` comes before the button, which the terminal draws with its hotkey in front (`1: Not now, +25000`).
+// A standing task named in the band is cut to this many characters.
+const RUNNING_CHARS = 30
+
+const runningOf = (running: readonly string[]): string | undefined => {
+  const [only] = running
+  if (only === undefined) return undefined
+  if (running.length > 1) return `${running.length} tasks keep running`
+  return `${only.length > RUNNING_CHARS ? `${only.slice(0, RUNNING_CHARS - 1)}…` : only} keeps running`
+}
+
+// What the band says. `width` is the cells the band lays its tree out in (`bodyColumns`); a band too narrow for all of it drops what keeps
+// running first, then ` of <threshold>`, then the context, and always keeps the way with the seconds and the end: the button, or for a
+// countdown with none, what it is. `text` comes before the button, which the terminal draws with its hotkey in front (`1: Not now, +25000`).
 export const bandOf = (c: Band, width: number): { text: string; button: string | undefined } => {
   const dry = c.decision.kind === 'dry-run'
   const way =
@@ -81,7 +94,13 @@ export const bandOf = (c: Band, width: number): { text: string; button: string |
   const end = button !== undefined ? `${NOT_NOW_KEY}: ${button}` : c.kind === 'cap' ? 'your draft stays in the prompt' : 'emergency brake'
   const context = `${SEP}context ${c.decision.tokens}`
   const fits = (text: string) => text.length + end.length <= width
-  const text = [`${head}${context} of ${c.threshold}${SEP}`, `${head}${context}${SEP}`].find(fits) ?? `${head}${SEP}`
+  const running = runningOf(c.running ?? [])
+  const candidates = [
+    ...(running === undefined ? [] : [`${head}${context} of ${c.threshold}${SEP}${running}${SEP}`]),
+    `${head}${context} of ${c.threshold}${SEP}`,
+    `${head}${context}${SEP}`,
+  ]
+  const text = candidates.find(fits) ?? `${head}${SEP}`
   return { text: button === undefined ? `${text}${end}` : text, button }
 }
 

@@ -63,6 +63,7 @@ const clocked = () => {
       tokens: 210_000,
       window: 1_000_000,
       backgroundTasks: 0,
+      standingTasks: 0,
       oneShotTimers: 0,
       subagents: 0,
       turns: 10,
