@@ -104,7 +104,9 @@ export const bandOf = (c: Band, width: number): { text: string; button: string |
   return { text: button === undefined ? `${text}${end}` : text, button }
 }
 
-// The key that presses "Not now": a single digit, which the host takes from an empty prompt for a band button.
+// The key that presses "Not now": a single digit, which the host takes from an empty prompt for a band button. The band is shared: another
+// mod's button with the same key takes it from this one or loses it to it ("the later wins", by the host's types; which one wins in a live
+// session is not measured). The countdown still ends by typing, and the command `later` moves the handover back without the key.
 export const NOT_NOW_KEY = '1'
 
 // One edit in the prompt, as `prompt.edit` brings it: the draft before, the span it replaces, what goes in, and the key that made it.
