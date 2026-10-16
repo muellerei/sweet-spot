@@ -1206,16 +1206,21 @@ export const register: Register = (on, options) => {
 
   // The band above the prompt, while a countdown runs or once the handoff written in a pause has gone cold: drawn from the state alone, so drawing waits on nothing and changes nothing but
   // whether a survey holds the band, which only the drawing sees. A survey has the band while it shows. The first draw measured gave
-  // `hasSurvey` as undefined (docs/host-behaviour.md, Commands): that is no survey.
-  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => {
+  // `hasSurvey` as undefined (docs/host-behaviour.md, Commands): that is no survey. The place is shared with every other mod: the band
+  // stands on top of what the rest of the chain draws there, never in place of it, so another mod's warning or buttons stay.
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const countdown = state.countdown
     if (countdown === undefined) {
       // The band of a handoff gone cold: no key and no countdown, and a survey has the band while it shows.
       if (!state.idle.coldShown || e.props.hasSurvey === true) return next(e)
       const { Box, Text } = $.ui.resolve(e)
+      const below = await next(e)
       return (
-        <Box>
-          <Text>{COLD_BAND}</Text>
+        <Box flexDirection="column">
+          <Box>
+            <Text>{COLD_BAND}</Text>
+          </Box>
+          {below}
         </Box>
       )
     }
@@ -1224,12 +1229,16 @@ export const register: Register = (on, options) => {
     if (survey) return next(e)
     const { Box, Text, Button } = $.ui.resolve(e)
     const band = bandOf(countdown, e.props.bodyColumns)
+    const below = await next(e)
     return (
-      <Box>
-        <Text>{band.text}</Text>
-        {band.button === undefined ? null : (
-          <Button key={NOT_NOW_BUTTON} label={band.button} hotkey={NOT_NOW_KEY} plain onPress={() => void notNow($, settings, state)} />
-        )}
+      <Box flexDirection="column">
+        <Box>
+          <Text>{band.text}</Text>
+          {band.button === undefined ? null : (
+            <Button key={NOT_NOW_BUTTON} label={band.button} hotkey={NOT_NOW_KEY} plain onPress={() => void notNow($, settings, state)} />
+          )}
+        </Box>
+        {below}
       </Box>
     )
   })

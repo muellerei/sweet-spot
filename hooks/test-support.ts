@@ -13,8 +13,12 @@ export const modTest = (name: string, ...rest: TestRest) => {
   test(name, { ...options, options: { countdown_seconds: 0, ...options.options } }, body)
 }
 
-// The engine's own answer to what the mod shows; the tests read what was said.
-export const withMod = (on: TestOn) => {
+// The band above the prompt as the host draws it with nothing of the mod's in it: empty.
+const EMPTY_BAND = { type: 'Box', props: {}, children: [] }
+
+// The engine's own answer to what the mod shows; the tests read what was said. `below` is what the chain under the mod draws above the
+// prompt, another mod's band in a test about sharing that place.
+export const withMod = (on: TestOn, below: object = EMPTY_BAND) => {
   const seen = {
     toasts: [] as string[],
     logs: [] as string[],
@@ -41,8 +45,7 @@ export const withMod = (on: TestOn) => {
     ;(e.to === 'debug' ? seen.debug : seen.logs).push(e.text)
     return { value: undefined }
   })
-  // The band above the prompt as the host draws it with nothing of the mod's in it: empty.
-  on('ui.render', async () => ({ type: 'Box', props: {}, children: [] }) as never)
+  on('ui.render', async () => below as never)
   on('ui.status', async (_, e) => {
     seen.status.push(e.text)
     return { value: undefined }
