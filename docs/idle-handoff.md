@@ -45,7 +45,7 @@ conversation again.
 
 Any turn that starts in the meantime, the end of the session, a compact and a change of model end the pause; the next answer plans
 again. Typing and slash commands do not. A compact that another hook holds back (another mod, or a `PreCompact` hook in your settings)
-leaves the pause as it was, and a handoff that comes due while a compact runs waits for its outcome.
+or that fails leaves the pause as it was, and a handoff that comes due while a compact runs waits for its outcome.
 
 ## Staying in the session
 

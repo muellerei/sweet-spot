@@ -67,7 +67,7 @@ baseline from `turn.step`, plans at the pause after `atPause` (`planIdle`) and w
 `state.ts` holds what `handingOver` holds (`underWay`). The first message after it takes the handoff at once (`claim` in `hold.ts`), and
 `comeBack` judges by the clock; a switch delivers through `deliverReturn`, the same `deliver` as every handoff. Every turn, the end of
 the session, a compact that goes through and a change of model end the pause (`endPause`); a compact holds the planned step back while it
-runs and sets it again where another hook answered `{ skip }` (`holdIdle`); while the handoff is written, a compact or a change of model
+runs and sets it again where another hook answered `{ skip }` or the compact failed (`holdIdle`); while the handoff is written, a compact or a change of model
 marks it (`endedWhilePreparing`) and what is written is dropped, as does any turn but the command's own (a slash command, or the held
 message, whose turn starts while it is put in). `statusTail` in `status.ts` says where it stands.
 
