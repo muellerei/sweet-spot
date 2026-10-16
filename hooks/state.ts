@@ -96,8 +96,9 @@ export type State = LevelMemo & {
   // the start of its last request. `read` is due at the first turn of every session, since a /clear does not reload the mod but ends what
   // was known. `fresh`: the session began with no conversation (a start or a /clear), so its first request is the project's baseline.
   idle: {
-    // The step that writes the handoff, planned at the end of an answer; and the handoff written, until the person comes back or the pause ends.
-    timer: { cancel: () => void } | undefined
+    // The step that writes the handoff, planned at the end of an answer, with when the pause began (`since`, kept for a compact that holds
+    // the step back and plans it again); and the handoff written, until the person comes back or the pause ends.
+    timer: { cancel: () => void; since: number } | undefined
     prepared: IdlePrepared | undefined
     // The pause ended while the handoff was being written (a turn not the command's, a compact, a change of model): why, so that the handoff
     // that comes is dropped.

@@ -824,10 +824,31 @@ const planIdle = async ($: Engine, config: Config, state: State, stop: Stop, tok
   })
   const touch = idle.touch
   if (!verdict.plan || touch === undefined) return log('debug', `idle: not planned, ${verdict.plan ? 'no request seen' : verdict.why}`)
-  const now = await $.clock.now()
-  const wait = Math.max(0, prepareDueAt(touch) - now)
-  idle.timer = $.clock.after(wait, () => void prepareIdle($, config, state, now))
+  const wait = await armIdle($, config, state, touch, await $.clock.now())
   log('debug', `idle: planned in ${Math.round(wait / 60_000)} min`)
+}
+
+// Sets the step for its time, from the touch; `since` is when the pause began, which the line at the return counts from. Gives the wait.
+const armIdle = async ($: Engine, config: Config, state: State, touch: number, since: number) => {
+  const wait = Math.max(0, prepareDueAt(touch) - (await $.clock.now()))
+  const timer = $.clock.after(wait, () => void prepareIdle($, config, state, since))
+  state.idle.timer = { cancel: () => timer.cancel(), since }
+  return wait
+}
+
+// Holds the planned step back while a compact runs, so that nothing is written of a context the compact replaces, and gives back what sets
+// it again where the compact did not go through. Meanwhile a timer that never fires stands in its place: the pause still has a step
+// planned, for `endPause` and the status, and a stop that plans anew replaces it as it would the step.
+const holdIdle = ($: Engine, config: Config | undefined, state: State) => {
+  const idle = state.idle
+  const held = idle.timer
+  if (held === undefined || config === undefined) return () => Promise.resolve()
+  held.cancel()
+  const standIn = { cancel: () => {}, since: held.since }
+  idle.timer = standIn
+  return async () => {
+    if (idle.timer === standIn && idle.touch !== undefined) await armIdle($, config, state, idle.touch, held.since)
+  }
 }
 
 // The step itself: the reads first, then every check and the mark in one go with no wait between, so that a turn of the person's that starts
@@ -1181,15 +1202,32 @@ export const register: Register = (on, options) => {
   })
 
   // A compact the mod did not start ends a countdown too. It raises no session end (the session id stays), no turn and no stop; the
-  // context it leaves is unknown at first. Only watched, before it runs. A precompute only prepares one and changes nothing. The mod's own
-  // compact comes after its countdown ran out, and meets none.
+  // context it leaves is unknown at first. Only watched. A precompute only prepares one and changes nothing. The mod's own compact comes
+  // after its countdown ran out, and meets none.
+  //
+  // The countdown ends before the compact runs, so that no handover starts while it does; a compact held back costs it, and the next pause
+  // counts down again. The pause and the mark wait for the outcome: another hook can hold the compact back (`{ skip }`), and the host does
+  // not try its own compact at minute 54 of a pause again, so a pause ended beforehand would leave the session with no handoff at all. A
+  // subagent's compact of its own transcript (`agentId`) leaves the main conversation as it was.
   on('session.compact', async ($, e, next) => {
     if (e.trigger !== 'precompute') await endCountdown($, settings, state, 'compact').catch(() => {})
-    if (e.trigger !== 'precompute' && e.agentId === undefined) await logPauseOver($, settings, state, endPause($, state, 'a compact'))
-    const result = await next(e)
-    // After a compact the context is unknown at first, and nothing would end the mark; a compact the host refused leaves it standing. A
-    // subagent's compact of its own transcript (`agentId`) leaves the main conversation as it was.
-    if (e.trigger !== 'precompute' && e.agentId === undefined && !('skip' in result)) await endAsap($, settings, state, 'a compact').catch(() => {})
+    const main = e.trigger !== 'precompute' && e.agentId === undefined
+    const goOn = main ? holdIdle($, config, state) : undefined
+    let result: Awaited<ReturnType<typeof next>>
+    try {
+      result = await next(e)
+    } catch (err) {
+      await goOn?.().catch(() => {})
+      throw err
+    }
+    if (goOn === undefined) return result
+    if ('skip' in result) {
+      await goOn().catch(() => {})
+      return result
+    }
+    // After a compact the context is unknown at first, and nothing would end the mark.
+    await logPauseOver($, settings, state, endPause($, state, 'a compact'))
+    await endAsap($, settings, state, 'a compact').catch(() => {})
     return result
   })
 
