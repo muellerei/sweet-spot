@@ -4,6 +4,8 @@ All notable changes to sweet-spot are listed here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-16
+
 ### Added
 
 - The first message of the fresh session names what still runs: each standing task with its full command and task id, under "Still running from the previous session, not waited for because they are not expected to end by themselves". When the emergency brake hands over despite work that ends, a second list names that work (a shell command by its command, a subagent by its type and description) and says its results arrive in the fresh session. Both lists come from the stop the handover was decided on, on every way that starts a fresh session, including coming back after a long pause. With nothing running the message is as before; `builtin-compact` keeps the session and has no such message.
