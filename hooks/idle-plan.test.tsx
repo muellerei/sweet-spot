@@ -105,20 +105,20 @@ const HELD_BACK = [
   ["the host's compact while idle", { compact: COMPACT_VETO }, autoCompact],
 ] as const
 
-for (const [name, host, held] of HELD_BACK) {
+for (const [name, answers, held] of HELD_BACK) {
   modTest(`${name} that another hook holds back leaves the pause: the handoff is written`, LIVE_IDLE, async ($, on) => {
-    const { seen, world, host: h } = idleSession(on, host)
+    const { seen, world, host } = idleSession(on, answers)
     await answer($)
     await world.clock.advance(54 * MINUTE)
     await held($)
     await world.clock.advance(MINUTE)
-    expect(h.modelForkPrompts).toHaveLength(1)
+    expect(host.modelForkPrompts).toHaveLength(1)
     expect(idleLines(seen.logs)).toContain(PREPARED)
     expect(idleLines(seen.logs).filter(l => l.includes('pause over'))).toEqual([])
   })
 
   modTest(`${name} that another hook holds back keeps the handoff written`, LIVE_IDLE, async ($, on) => {
-    const { seen, world } = idleSession(on, host)
+    const { seen, world } = idleSession(on, answers)
     await answer($)
     await world.clock.advance(55 * MINUTE)
     expect(idleLines(seen.logs)).toContain(PREPARED)
@@ -138,13 +138,15 @@ modTest("the host's compact while idle that goes through ends the pause: nothing
 })
 
 // The step can come due while a compact runs (the host's took 38 s at 210000 tokens, measured): it waits for the outcome, so that nothing is
-// written of a context the compact replaces, and comes at once where another hook held the compact back.
-for (const [outcome, answer_, written] of [
+// written of a context the compact replaces, and comes at once where the compact did not go through: another hook held it back, or it
+// failed (a hook beneath that throws), which leaves the session as it was too.
+for (const [outcome, reply, written] of [
   ['goes through', COMPACT_DONE, 0],
   ['is held back', COMPACT_VETO, 1],
+  ['fails', { throws: 'probe failure' }, 1],
 ] as const) {
   modTest(`the step due while a compact runs waits for it: the compact ${outcome}`, LIVE_IDLE, async ($, on) => {
-    const { world, host } = idleSession(on, { compact: answer_ })
+    const { world, host } = idleSession(on, { compact: reply })
     await answer($)
     await world.clock.advance(54 * MINUTE + 30_000)
     let during = -1
@@ -152,7 +154,7 @@ for (const [outcome, answer_, written] of [
       await world.clock.advance(MINUTE)
       during = host.modelForkPrompts.length
     }
-    await autoCompact($)
+    await autoCompact($).catch(() => {})
     await world.clock.settle()
     expect(during).toBe(0)
     expect(host.modelForkPrompts).toHaveLength(written)

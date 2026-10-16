@@ -824,13 +824,14 @@ const planIdle = async ($: Engine, config: Config, state: State, stop: Stop, tok
   })
   const touch = idle.touch
   if (!verdict.plan || touch === undefined) return log('debug', `idle: not planned, ${verdict.plan ? 'no request seen' : verdict.why}`)
-  const wait = await armIdle($, config, state, touch, await $.clock.now())
+  const now = await $.clock.now()
+  const wait = armIdle($, config, state, touch, now, now)
   log('debug', `idle: planned in ${Math.round(wait / 60_000)} min`)
 }
 
 // Sets the step for its time, from the touch; `since` is when the pause began, which the line at the return counts from. Gives the wait.
-const armIdle = async ($: Engine, config: Config, state: State, touch: number, since: number) => {
-  const wait = Math.max(0, prepareDueAt(touch) - (await $.clock.now()))
+const armIdle = ($: Engine, config: Config, state: State, touch: number, since: number, now: number) => {
+  const wait = Math.max(0, prepareDueAt(touch) - now)
   const timer = $.clock.after(wait, () => void prepareIdle($, config, state, since))
   state.idle.timer = { cancel: () => timer.cancel(), since }
   return wait
@@ -847,7 +848,7 @@ const holdIdle = ($: Engine, config: Config | undefined, state: State) => {
   const standIn = { cancel: () => {}, since: held.since }
   idle.timer = standIn
   return async () => {
-    if (idle.timer === standIn && idle.touch !== undefined) await armIdle($, config, state, idle.touch, held.since)
+    if (idle.timer === standIn && idle.touch !== undefined) armIdle($, config, state, idle.touch, held.since, await $.clock.now())
   }
 }
 
@@ -1211,16 +1212,12 @@ export const register: Register = (on, options) => {
   // subagent's compact of its own transcript (`agentId`) leaves the main conversation as it was.
   on('session.compact', async ($, e, next) => {
     if (e.trigger !== 'precompute') await endCountdown($, settings, state, 'compact').catch(() => {})
-    const main = e.trigger !== 'precompute' && e.agentId === undefined
-    const goOn = main ? holdIdle($, config, state) : undefined
-    let result: Awaited<ReturnType<typeof next>>
-    try {
-      result = await next(e)
-    } catch (err) {
-      await goOn?.().catch(() => {})
+    if (e.trigger === 'precompute' || e.agentId !== undefined) return next(e)
+    const goOn = holdIdle($, config, state)
+    const result = await next(e).catch(async (err: unknown) => {
+      await goOn().catch(() => {})
       throw err
-    }
-    if (goOn === undefined) return result
+    })
     if ('skip' in result) {
       await goOn().catch(() => {})
       return result
