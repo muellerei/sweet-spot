@@ -12,6 +12,11 @@ running (background tasks, one-shot timers), and `turn.complete` says how the tu
 
 **The judgment.** `decide` in `decide.ts` answers from a snapshot whether to hand over now, postpone (and why), or do nothing. It is
 pure: the caller takes the snapshot, acts on the answer and keeps the record of the last attempt (`atPause` in `register.tsx`).
+What counts as running work has one rule each: `standing.ts` says which background shell command never ends by itself (a dev server, a
+watcher), `waiting` in `decide.ts` counts the running tasks that are not standing, and `busyReason` turns the counts into a reason to wait.
+The stop's task list is kept as it came (`lastStop` in `state.ts`), and every count is derived from it where it is read. The standing tasks
+are named in the first message of the fresh session (`firstMessage` in `handoff.ts`) from the list fixed when the handover was decided
+(`state.still`), and in the countdown by the words their rule hit (`standingPart`).
 `/sweet-spot later` moves the next handover back: `later.ts` makes the answer and the value from the context the command reads, and
 `decide` then judges at `thresholdInForce` instead of the threshold, until that handover is spent or the context shrinks (`laterAt`).
 `/sweet-spot asap` sets a mark (`Asap` in `decide.ts`, `asapFor` in `asap.ts`): with it `decide` skips the threshold and the minimum gap, and

@@ -122,7 +122,7 @@ modTest('a read that fails keeps what was read before, writes nothing, and the m
 const AT = (level: string) => ({ logLevel: level })
 const MODEL_FORK_ANSWER = modelForkAnswer('goal: finish')
 const PAUSE =
-  'info: pause: context 210000 of 1000000 tokens (threshold 200000, brake 350000), 0 background tasks, 0 timers, 0 subagents, turn 10, no attempt before, decided act'
+  'info: pause: context 210000 of 1000000 tokens (threshold 200000, brake 350000), 0 background tasks (0 standing), 0 timers, 0 subagents, turn 10, no attempt before, decided act'
 const SETTINGS =
   'settings: threshold 200000, dry_run off, min gap 10 minutes and 5 turns, later_tokens 25000, countdown_seconds 0, idle_handoff on, idle_handoff_min_tokens 0, method external-command, fallback internal-handoff, handoff command "handoff"'
 const lines = (logs: string[]) => logs.filter(l => !l.startsWith('info: settings:'))
@@ -159,6 +159,22 @@ modTest('at info a pause shows its line and none of the finer ones', LIVE, async
   await stop($)
   expect(lines(diagnostic(seen.logs)).slice(0, 1)).toEqual([PAUSE])
   expect(diagnostic(seen.logs).filter(l => /^(debug|trace): /.test(l))).toEqual([])
+})
+
+modTest('the pause line counts every background task and the standing ones in it, and names no command', LIVE, async ($, on) => {
+  const seen = withMod(on)
+  sessionWith(on)
+  hostWith(on, AT('trace'))
+  await startSession($)
+  await startTurn($, 't1')
+  await endTurn($, 'answer', { turnId: 't1' })
+  const server = { id: 'b1', type: 'shell', status: 'running', description: 'Start dev server', command: 'PORT=3001 npm run dev' }
+  const tests = { id: 'b2', type: 'shell', status: 'running', description: 'Run the tests', command: 'npm test' }
+  await stop($, { background_tasks: [server, tests] })
+  const pause = diagnostic(seen.logs).filter(l => l.startsWith('info: pause:'))
+  expect(pause.length).toBe(1)
+  expect(pause[0]).toContain(', 2 background tasks (1 standing), 0 timers, ')
+  for (const line of diagnostic(seen.logs)) expect([line, /npm|3001|dev server|tests/i.test(line)]).toEqual([line, false])
 })
 
 // After a reload the mod is loaded into a running session: the end of a turn can be the first it sees, and its read comes before the pause.
@@ -368,7 +384,7 @@ modTest('the emergency brake is logged with the threshold, the brake and the wor
   await endTurn($, 'answer', { turnId: 't1' })
   await stop($)
   expect(seen.logs).toContain(
-    'info: pause: context 360000 of 1000000 tokens (threshold 200000, brake 350000), 0 background tasks, 0 timers, 1 subagents, turn 10, no attempt before, decided act, forced past the brake by subagent',
+    'info: pause: context 360000 of 1000000 tokens (threshold 200000, brake 350000), 0 background tasks (0 standing), 0 timers, 1 subagents, turn 10, no attempt before, decided act, forced past the brake by subagent',
   )
 })
 
@@ -749,7 +765,7 @@ modTest('later is logged when it is taken, turned down and spent, and the pause 
     'debug: later: from context 190000, 50000 tokens, hands over at 240000',
     'debug: later: turned down, not a number of tokens',
     'debug: later: turned down, not past 240000',
-    'info: pause: context 240000 of 1000000 tokens (threshold 200000, later 240000, brake 350000), 0 background tasks, 0 timers, 0 subagents, turn 10, no attempt before, decided dry-run',
+    'info: pause: context 240000 of 1000000 tokens (threshold 200000, later 240000, brake 350000), 0 background tasks (0 standing), 0 timers, 0 subagents, turn 10, no attempt before, decided dry-run',
     'debug: later: spent by this handover',
   ])
 })
@@ -766,7 +782,7 @@ modTest('later capped at the brake, turned down at it, and over when the context
     'debug: later: from context 300000, 100000 tokens, hands over at 350000, capped at the emergency brake',
     'debug: later: turned down, at the emergency brake',
     'debug: later: over, the context shrank below where it was asked',
-    'info: pause: context 100000 of 1000000 tokens (threshold 200000, brake 350000), 0 background tasks, 0 timers, 0 subagents, turn 10, no attempt before, decided none',
+    'info: pause: context 100000 of 1000000 tokens (threshold 200000, brake 350000), 0 background tasks (0 standing), 0 timers, 0 subagents, turn 10, no attempt before, decided none',
   ])
 })
 

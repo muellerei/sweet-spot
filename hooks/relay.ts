@@ -21,6 +21,7 @@ import {
   type Entry,
   type ModelForkAnswer,
   type ModelForkUsage,
+  type Still,
 } from './handoff'
 import type { Config, Method } from './config'
 import { fellBackLine } from './report'
@@ -351,7 +352,7 @@ export const prepareByCommand = async (io: Io, state: State, command: string): P
   }
   if (typeof handoff !== 'string' || handoff.trim() === '') return failed('read', 'the handoff file is empty')
   io.log('debug', `file read, ${handoff.length} characters`)
-  return { text: firstMessage(handoff), file }
+  return { text: firstMessage(handoff, state.still), file }
 }
 
 const isFailure = (r: Prepared | Failure): r is Failure => 'stage' in r
@@ -390,7 +391,7 @@ const internalHandoffPrompt = async (io: Io): Promise<{ prompt: string; source: 
 }
 
 // Asks the model for the handoff; hands nothing over.
-export const prepareInternally = async (io: Io): Promise<Prepared | Failure> => {
+export const prepareInternally = async (io: Io, still?: Still): Promise<Prepared | Failure> => {
   let answer: ModelForkAnswer
   const began = await io.now()
   try {
@@ -405,23 +406,24 @@ export const prepareInternally = async (io: Io): Promise<Prepared | Failure> => 
   else io.log('warn', `internal handoff gave nothing (${modelForkKind(answer)}), ${took}`)
   if (!answer.isAnswered) return failed('model-fork', `the mod could not write the handoff: ${modelForkFailure(answer)}`)
   if (answer.text.trim() === '') return failed('model-fork', 'the mod could not write the handoff: the model replied with no text')
-  return answer.usage === undefined ? { text: firstMessage(answer.text), began } : { text: firstMessage(answer.text), usage: answer.usage, began }
+  const text = firstMessage(answer.text, still)
+  return answer.usage === undefined ? { text, began } : { text, usage: answer.usage, began }
 }
 
 // The handoff written ahead in a long pause: by the user's command when that is the way, else by the mod. A compact is never used, since a
 // warm return must find the whole context, and `throughMethods` is not either: whatever the command's failure, it has changed nothing but
 // add its own turn, so the mod writes the handoff unless the fallback is none.
 export const prepare = async (io: Io, state: State, config: Config): Promise<Prepared | Failure> => {
-  if (config.handoffMethod !== 'external-command') return prepareInternally(io)
+  if (config.handoffMethod !== 'external-command') return prepareInternally(io, state.still)
   const first = await prepareByCommand(io, state, config.handoffCommand)
   if (!isFailure(first) || config.handoffFallback === 'none') return first
   io.log('warn', `idle: the command gave no handoff (stage ${first.stage}), the mod writes it`)
-  const second = await prepareInternally(io)
+  const second = await prepareInternally(io, state.still)
   return isFailure(second) ? { ...second, reason: `${first.reason}; ${second.reason}` } : second
 }
 
 const throughInternalHandoff = async (io: Io, state: State): Promise<Failure | undefined> => {
-  const r = await prepareInternally(io)
+  const r = await prepareInternally(io, state.still)
   return isFailure(r) ? r : deliver(io, state, r.text)
 }
 

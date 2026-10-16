@@ -3,7 +3,6 @@ import type { EngineInterface as Engine, Register } from 'claude-code'
 import { configOf, type Config, type ConfigResult } from './config'
 import { ASAP_OVER, RUNNING_UNKNOWN, asapFor } from './asap'
 import {
-  activeTasks,
   brakeFor,
   brakeOf,
   busyReason,
@@ -12,7 +11,9 @@ import {
   laterAt,
   oneShots,
   shrunk,
+  standingOf,
   thresholdInForce,
+  waiting,
   type Decision,
   type Snapshot,
 } from './decide'
@@ -21,6 +22,7 @@ import { LATER_OVER, laterFor, tokensOf } from './later'
 import { idlePart, statusFor, statusTail } from './status'
 import { checkOf, firstMethod, judgedLine } from './compact-check'
 import { bandOf, kindAt, moveBack, NOT_NOW_KEY, typed, type Countdown, type Start } from './countdown'
+import { standingPart } from './standing'
 import { begin, end, endedLine, press, surveyed, type Answer, type CountdownIo, type EndReason, type Expiry } from './countdown-flow'
 import { logger, refresh, shows } from './log'
 import {
@@ -467,6 +469,7 @@ const handoff = async ($: Engine, config: Config, state: State, tokens: number) 
   } finally {
     // `carryOut` ends the holding itself, in one step with its last look at what was held; this covers a throw before that.
     state.handingOver = false
+    state.still = undefined
   }
 }
 
@@ -486,6 +489,8 @@ const handOver = ($: Engine, decision: Extract<Decision, { kind: 'act' }>, confi
   if (announce && first !== undefined) say($, reportOf(decision, first))
   state.handingOver = true
   state.held = []
+  const tasks = state.lastStop?.background_tasks
+  state.still = { standing: standingOf(tasks), forced: decision.forced === undefined ? [] : waiting(tasks) }
   $.clock.after(0, () => void handoff($, config, state, decision.tokens))
 }
 
@@ -513,15 +518,10 @@ const AFTER_HANDOFF_PAUSES = 3
 const limitsOf = (limits: readonly { kind: string; percentUsed: number }[]): string =>
   limits.length === 0 ? '' : `, limits ${limits.map(l => `${l.kind} ${l.percentUsed}%`).join(', ')}`
 
-const outstandingOf = (e: Stop): NonNullable<State['lastStop']> => ({
-  backgroundTasks: activeTasks(e.background_tasks),
-  oneShotTimers: oneShots(e.session_crons),
-})
-
 // What a pause judges, but the clock, built the same way for the pause and for the end of a countdown. `later` is checked against the
 // context: the pause has already ended it in the state, the end of a countdown only reads it.
 const snapshotOf = (
-  seen: NonNullable<State['lastStop']>,
+  seen: Pick<Stop, 'background_tasks' | 'session_crons'>,
   context: { tokens?: number; window: number },
   agents: readonly { status: string }[],
   turns: number,
@@ -529,7 +529,9 @@ const snapshotOf = (
 ): Omit<Snapshot, 'now'> => ({
   tokens: context.tokens,
   window: context.window,
-  ...seen,
+  backgroundTasks: waiting(seen.background_tasks).length,
+  standingTasks: standingOf(seen.background_tasks).length,
+  oneShotTimers: oneShots(seen.session_crons),
   subagents: agents.filter(a => a.status === 'running').length,
   turns,
   lastAttempt: state.lastAttempt,
@@ -583,7 +585,7 @@ const atPause = async ($: Engine, e: Stop, config: Config, state: State, [{ cont
   const deferred = shrunk(state.deferred, context.tokens)
   const deferredOver = state.deferred !== undefined && deferred === undefined
   state.deferred = deferred
-  const snapshot = { ...snapshotOf(outstandingOf(e), context, agents, turns, state), now }
+  const snapshot = { ...snapshotOf(e, context, agents, turns, state), now }
   const log = logTo($, state)
   if (over) log('debug', LATER_OVER)
   if (asapOver) log('debug', ASAP_OVER)
@@ -603,7 +605,7 @@ const atPause = async ($: Engine, e: Stop, config: Config, state: State, [{ cont
   const decision = decide(snapshot, config)
   log(
     'info',
-    `pause: context ${snapshot.tokens} of ${snapshot.window} tokens (threshold ${threshold}${state.later === undefined ? '' : `, later ${thresholdInForce(config.threshold, snapshot.window, state.later)}`}${state.asap === undefined ? '' : ', asap'}, brake ${brakeOf(threshold, snapshot.window)}), ${snapshot.backgroundTasks} background tasks, ${snapshot.oneShotTimers} timers, ${snapshot.subagents} subagents, turn ${turns}, ${state.lastAttempt === undefined ? 'no attempt before' : `last attempt at turn ${state.lastAttempt.turns}`}${limitsOf(rateLimits)}, ${decidedOf(decision)}${'forced' in decision && decision.forced !== undefined ? `, forced past the brake by ${decision.forced}` : ''}`,
+    `pause: context ${snapshot.tokens} of ${snapshot.window} tokens (threshold ${threshold}${state.later === undefined ? '' : `, later ${thresholdInForce(config.threshold, snapshot.window, state.later)}`}${state.asap === undefined ? '' : ', asap'}, brake ${brakeOf(threshold, snapshot.window)}), ${snapshot.backgroundTasks + snapshot.standingTasks} background tasks (${snapshot.standingTasks} standing), ${snapshot.oneShotTimers} timers, ${snapshot.subagents} subagents, turn ${turns}, ${state.lastAttempt === undefined ? 'no attempt before' : `last attempt at turn ${state.lastAttempt.turns}`}${limitsOf(rateLimits)}, ${decidedOf(decision)}${'forced' in decision && decision.forced !== undefined ? `, forced past the brake by ${decision.forced}` : ''}`,
   )
   if (decision.kind === 'none') {
     state.said = undefined
@@ -627,7 +629,7 @@ const atPause = async ($: Engine, e: Stop, config: Config, state: State, [{ cont
 // cannot be read, and they change only in a turn, which ends the countdown.
 const lookAgain = async ($: Engine, e: Stop, state: State): Promise<Omit<Snapshot, 'now'>> => {
   const [{ context }, agents, turns] = await Promise.all([$.session.usage(), $.agent.list(), $.session.turns()])
-  return snapshotOf(outstandingOf(e), context, agents, turns, state)
+  return snapshotOf(e, context, agents, turns, state)
 }
 
 // A countdown before the handover, where one is set and the first way is known; without a first way the pause goes on as before and
@@ -644,8 +646,16 @@ const countdownBegun = async ($: Engine, decision: Countdown['decision'], config
   }
   // The countdown at the brake counts down to the brake, which is where it hands over.
   const threshold = kind === 'brake' ? brakeFor(config, window) : thresholdInForce(config.threshold, window, state.later)
-  const start: Start =
-    kind === 'button' ? { kind, method, decision, threshold, moveBack: moveBack(config, window, decision.tokens) } : { kind, method, decision, threshold }
+  const running = standingOf(state.lastStop?.background_tasks)
+    .map(t => standingPart(t.command ?? ''))
+    .filter(part => part !== undefined)
+  const start: Start = {
+    ...(kind === 'button' ? { kind, moveBack: moveBack(config, window, decision.tokens) } : { kind }),
+    method,
+    decision,
+    threshold,
+    running,
+  }
   return begin(countdownIo($, state), state, config.countdownSeconds, start, expiry)
 }
 
@@ -852,8 +862,12 @@ const prepareIdle = async ($: Engine, config: Config, state: State, since: numbe
     state.preparing = true
     state.held = []
     const io = sessionIo($, state)
+    // Nothing runs between this and the return (a turn ends the pause), so the list is the one the return is judged on. The first message is
+    // written here and kept in `idle.prepared`, so the list goes as soon as it is.
+    state.still = { standing: standingOf(state.lastStop?.background_tasks), forced: [] }
     try {
       const r = await prepare(io, state, config)
+      state.still = undefined
       const over = idle.endedWhilePreparing
       if (over !== undefined) log('debug', pauseOverLine(over, true))
       else if ('stage' in r) {
@@ -876,6 +890,7 @@ const prepareIdle = async ($: Engine, config: Config, state: State, since: numbe
         })
       }
     } finally {
+      state.still = undefined
       await release(io, state, undefined, () => {
         state.preparing = false
       })
@@ -903,8 +918,12 @@ const comeBack = async ($: Engine, state: State, prepared: IdlePrepared, input: 
     turns = count
     tokens = usage.context.tokens
     const stop = state.lastStop
-    const running = { subagents: agents.filter(a => a.status === 'running').length, backgroundTasks: 0, oneShotTimers: 0, ...stop }
-    const busy = busyReason(running) !== undefined
+    const busy =
+      busyReason({
+        subagents: agents.filter(a => a.status === 'running').length,
+        backgroundTasks: waiting(stop?.background_tasks).length,
+        oneShotTimers: oneShots(stop?.session_crons),
+      }) !== undefined
     verdict = returnVerdict({ now, touch: state.idle.touch ?? now, busy, attachments: (input.attachments?.length ?? 0) > 0 })
   } catch {
     log('warn', 'idle: could not judge the return, the message stays in this session')
@@ -1246,7 +1265,7 @@ export const register: Register = (on, options) => {
       return next(e)
     }
     // What runs besides the answer, as this stop reports it: `asap` at rest judges from it until the next turn starts.
-    state.lastStop = outstandingOf(e)
+    state.lastStop = { background_tasks: e.background_tasks, session_crons: e.session_crons }
     state.idle.transcript = e.transcript_path
     const out = await next(e)
     // Another hook that asks the session to go on has the last word: it is no pause. Nor is the end of the handoff command's own turn.

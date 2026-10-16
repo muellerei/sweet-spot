@@ -1,5 +1,7 @@
 // The parts of a handoff through the user's own command that need no session: what to ask, where the file is, what the first message says.
 
+import type { TaskSummary } from './pairing'
+
 // The mod hands over at a size limit and not at the end of a piece of work, so the work is often in the middle of a task.
 const MID_TASK =
   'This session is handed over because its context is large, often in the middle of a task. Cover everything the current task needs to carry on without reading it all again: the state of the work, the next step, the files it touches by path with what matters in each, and the decisions still open.'
@@ -51,7 +53,24 @@ export const NEXT_MESSAGE = "The person's next message:"
 export const withHeld = (message: string, held: readonly string[], heading = TYPED_MEANWHILE): string =>
   held.length === 0 ? message : `${message}\n\n${heading}\n${held.join('\n\n')}`
 
-export const firstMessage = (handoff: string): string => `Handoff from the previous session. Read it and carry on with the next step.\n\n${handoff}`
+// What still runs when the handover begins, from the stop it was decided on: the standing tasks it did not wait for, and at the emergency
+// brake the work it went past (empty otherwise). The fresh session cannot see the old one's tasks, and their results come to it.
+export type Still = { standing: readonly TaskSummary[]; forced: readonly TaskSummary[] }
+
+const STANDING = 'Still running from the previous session, not waited for because they are not expected to end by themselves:'
+const FORCED = 'Still running, the handover did not wait for them; their results arrive here:'
+
+// A shell task by its command, any other by its type and what Claude wrote it was for.
+const taskLine = (t: TaskSummary) => `- ${t.type === 'shell' && t.command !== undefined ? t.command : `${t.type}: ${t.description}`} (task ${t.id})`
+
+const section = (title: string, tasks: readonly TaskSummary[]) => (tasks.length === 0 ? [] : [[title, ...tasks.map(taskLine)].join('\n')])
+
+export const firstMessage = (handoff: string, still?: Still): string =>
+  [
+    `Handoff from the previous session. Read it and carry on with the next step.\n\n${handoff}`,
+    ...section(STANDING, still?.standing ?? []),
+    ...section(FORCED, still?.forced ?? []),
+  ].join('\n\n')
 
 // The prompt the internal handoff asks the model when the user has none of their own. The `$.model.fork` call sees the whole history and has no tools, so it only has to say
 // what the next session needs; the length is a guide, and a prompt file of the user's can set another.

@@ -1,9 +1,9 @@
 import { test, expect } from 'claude-code/testing'
 
 import { DEFAULTS, configOf } from './config'
-import { activeTasks, decide, effectiveThreshold, laterAt, oneShots, shrunk, thresholdInForce, type Decision, type Snapshot } from './decide'
+import { decide, effectiveThreshold, laterAt, oneShots, running, shrunk, standingOf, thresholdInForce, waiting, type Decision, type Snapshot } from './decide'
 import { DEFAULT_PROMPT, ASK_FOR_PATH, firstMessage, modelForkFailure, modelForkKind, handoffPath, newestHandoff, promptFrom, promptPath } from './handoff'
-import { endSeen, freshPairing, judgeable, stopSeen, turnStarted } from './pairing'
+import { endSeen, freshPairing, judgeable, stopSeen, turnStarted, type TaskSummary } from './pairing'
 import { reportOf } from './report'
 
 const rejected = (options: Record<string, unknown>) => {
@@ -198,6 +198,7 @@ const quiet: Snapshot = {
   tokens: 100_000,
   window: 1_000_000,
   backgroundTasks: 0,
+  standingTasks: 0,
   oneShotTimers: 0,
   subagents: 0,
   now: 10_000_000_000,
@@ -394,7 +395,9 @@ test('decide: in dry-run mode a handoff is reported as one that would happen, wi
   expect(decide({ ...quiet, tokens: 100_000 }, dry)).toEqual({ kind: 'none' })
 })
 
-test('activeTasks: every background task counts that is not in a final state', async () => {
+const task = (status: string, command?: string): TaskSummary => ({ id: 't', type: 'shell', status, description: '', command })
+
+test('running: every background task counts that is not in a final state', async () => {
   const table: [string, number][] = [
     ['running', 1],
     ['pending', 1],
@@ -407,9 +410,23 @@ test('activeTasks: every background task counts that is not in a final state', a
     ['canceled', 0],
     ['error', 0],
   ]
-  for (const [status, expected] of table) expect([status, activeTasks([{ status }])]).toEqual([status, expected])
-  expect(activeTasks([{ status: 'running' }, { status: 'completed' }, { status: 'running' }])).toBe(2)
-  expect(activeTasks(undefined)).toBe(0)
+  for (const [status, expected] of table) expect([status, running([task(status)]).length]).toEqual([status, expected])
+  expect(running([task('running'), task('completed'), task('running')]).length).toBe(2)
+  expect(running(undefined)).toEqual([])
+})
+
+test('waiting and standingOf: a running task is either waited for or standing, never both, and a finished one is neither', async () => {
+  const server = task('running', 'npm run dev')
+  const build = task('running', 'npm run build')
+  const agent: TaskSummary = { id: 'a', type: 'subagent', status: 'running', description: 'npm run dev' }
+  const tasks = [server, build, agent, task('completed', 'npm run dev'), task('completed', 'npm test')]
+  expect(waiting(tasks)).toEqual([build, agent])
+  expect(standingOf(tasks)).toEqual([server])
+  for (const status of ['completed', 'failed', 'killed', 'stopped', 'cancelled', 'canceled', 'error']) {
+    expect([status, waiting([task(status, 'npm run dev')]), standingOf([task(status, 'npm run dev')])]).toEqual([status, [], []])
+  }
+  expect(waiting(undefined)).toEqual([])
+  expect(standingOf(undefined)).toEqual([])
 })
 
 test('oneShots: a timer that fires once counts, a recurring one does not', async () => {
@@ -570,7 +587,7 @@ test('DEFAULT_PROMPT: asks to redact secrets and to name the skills the next ses
 })
 
 test('Pairing: a stop and the end of its turn are judged once both are in, in either order, and the stop only once', async () => {
-  const stop = { background_tasks: [{ status: 'running' }] }
+  const stop = { background_tasks: [task('running')] }
   const early = freshPairing()
   stopSeen(early, stop)
   expect(judgeable(early)).toEqual({ waitingFor: 'the end of the turn' })

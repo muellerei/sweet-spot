@@ -63,6 +63,22 @@ for (const [name, setUp] of [
   })
 }
 
+modTest(
+  'a message after the cache expired starts a fresh session while only a dev server runs, and its first message names the server',
+  LIVE_IDLE,
+  async ($, on) => {
+    const { seen, world, host } = idleSession(on)
+    const server = { id: 'b1', type: 'shell', status: 'running', description: 'Start dev server', command: 'npm run dev' }
+    await prepared($, world, { background_tasks: [server] })
+    await world.clock.advance(75 * MINUTE)
+    expect(await typeInto($, BACK)).toEqual({ drop: HELD })
+    await world.clock.settle()
+    const still = 'Still running from the previous session, not waited for because they are not expected to end by themselves:\n- npm run dev (task b1)'
+    expect(host.steps).toEqual(['run clear', `submit ${HANDOFF}\n\n${still}\n\nThe person's next message:\n${BACK}`])
+    expect(seen.toasts).toEqual([SWITCHED])
+  },
+)
+
 modTest('a message with an attachment stays in this session with its attachment, and says why', LIVE_IDLE, async ($, on) => {
   const { seen, world, host } = idleSession(on)
   await prepared($, world)

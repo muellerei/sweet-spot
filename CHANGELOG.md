@@ -4,6 +4,19 @@ All notable changes to sweet-spot are listed here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+
+- The first message of the fresh session names what still runs: each standing task with its full command and task id, under "Still running from the previous session, not waited for because they are not expected to end by themselves". When the emergency brake hands over despite work that ends, a second list names that work (a shell command by its command, a subagent by its type and description) and says its results arrive in the fresh session. Both lists come from the stop the handover was decided on, on every way that starts a fresh session, including coming back after a long pause. With nothing running the message is as before; `builtin-compact` keeps the session and has no such message.
+- The countdown says what keeps running: `· npm run dev keeps running`, or `· 2 tasks keep running`. It shows only the words the rule hit, never a path, a prefix or a value such as a port or a token, cut to 30 characters. A task taken for a standing one by mistake shows here before the handover, while "Not now" can still hold it. In a narrow band this goes first.
+
+### Fixed
+
+- A dev server, a watcher or `tail -f` in the background held the handover back until the emergency brake, and after a long pause it kept your message in the old session with the cache cold. Such a task never ends by itself, so nothing waits for it any more: a background shell command that surely never ends (`npm run dev`, `vite`, `vitest --watch`, `docker compose up`, `ngrok http`, and the others in the table in `hooks/standing.ts`) no longer counts as running work. This holds at the pause, at the end of a countdown, for `asap` and on coming back after a long pause. Work that ends is waited for as before, and so is any command the mod does not know or cannot read safely (a subshell, `$(…)`, a script of your own). Writing the handoff at minute 55 is unchanged.
+
+### Changed
+
+- The pause line counts every running background task and the standing ones in it: `2 background tasks (1 standing)`. It names no command.
+
 ## [0.2.0] - 2026-10-15
 
 ### Added

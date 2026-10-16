@@ -4,9 +4,10 @@
 import type { CompactCheck } from './compact-check'
 import type { Countdown } from './countdown'
 import type { Asap, Attempt, Later } from './decide'
+import type { Still } from './handoff'
 import type { Lifetime } from './idle-handoff'
 import type { LevelMemo } from './log'
-import { freshPairing, type Pairing } from './pairing'
+import { freshPairing, type Pairing, type Stop } from './pairing'
 
 // How the awaited turn of the handoff command ended: with its answer, or without one and why.
 export type Ended = { answer: string; rejected?: true } | { failure: string; cancelled?: true }
@@ -58,8 +59,9 @@ export type State = LevelMemo & {
   // A handover asked for with `/sweet-spot asap`, until a handover begins (spent, whether it goes through or not). Kept here only, like `later`.
   asap: Asap | undefined
   // What the last stop of the main loop said about background tasks and timers, which nothing else reads: `asap` at rest judges from it. It goes
-  // at the start of a turn and at the end of the session, when it no longer holds, and then what runs is not known.
-  lastStop: { backgroundTasks: number; oneShotTimers: number } | undefined
+  // at the start of a turn and at the end of the session, when it no longer holds, and then what runs is not known. Kept as the stop said it:
+  // every count is derived where it is read, so none can disagree with the list.
+  lastStop: Pick<Stop, 'background_tasks' | 'session_crons'> | undefined
   // The step that starts the handover of `asap` at rest is planned and has not begun; a second `asap` must not plan another.
   asapScheduled: boolean
   // A redelivery is under way: a second one would submit the message twice.
@@ -69,6 +71,9 @@ export type State = LevelMemo & {
   answerRunning: boolean
   // Set once a handoff has succeeded: the context it left, and how many pauses of the fresh session were logged against it. Only a debug line reads it.
   afterHandoff: { before: number; pauses: number } | undefined
+  // What still runs, fixed where the handover is decided and read where its first message is written: in between the list in `lastStop` can
+  // go (a turn starts) or change (the command's own turn). Set only while that first message is written.
+  still: Still | undefined
   // Whether the last compact was enough, found out at the first tool call or pause after it (`compact-check.ts`). Not kept across a reload, like the rest: at worst
   // one compact more follows.
   compactCheck: CompactCheck
@@ -151,6 +156,7 @@ export const freshState = (): State => ({
   redelivering: false,
   answerRunning: false,
   afterHandoff: undefined,
+  still: undefined,
   compactCheck: undefined,
   countdown: undefined,
   deferred: undefined,
