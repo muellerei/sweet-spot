@@ -50,8 +50,13 @@ export const step = async ($: TestEngine, turnId: string) => {
 }
 
 // A session whose first answer ends at 120000 tokens with an hour of cache: above the lower bound, below the threshold.
-export const idleSession = (on: TestOn, host: Parameters<typeof hostWith>[1] = {}, world: Parameters<typeof sessionWith>[1] = {}) => {
-  const seen = withMod(on)
+export const idleSession = (
+  on: TestOn,
+  host: Parameters<typeof hostWith>[1] = {},
+  world: Parameters<typeof sessionWith>[1] = {},
+  below?: Parameters<typeof withMod>[1],
+) => {
+  const seen = withMod(on, below)
   const w = sessionWith(on, { tokens: 120_000, ...world })
   const h = hostWith(on, { logLevel: 'debug', files: { [T]: HOUR_TRANSCRIPT }, modelFork: modelForkAnswer('goal: finish the parser'), ...host })
   const requests = answersSteps(on)

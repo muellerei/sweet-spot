@@ -11,6 +11,7 @@ All notable changes to sweet-spot are listed here. The format follows [Keep a Ch
 
 ### Fixed
 
+- The band above the prompt took the place of whatever other mods draw there: while a countdown ran, or once a handoff written in a long pause had gone cold, another mod's band (a warning, its buttons) disappeared. The band now stands on top of what the rest draws, which stays as it is. When a survey holds the band, it shows as before ([#14](https://github.com/muellerei/sweet-spot/issues/14)).
 - A dev server, a watcher or `tail -f` in the background held the handover back until the emergency brake, and after a long pause it kept your message in the old session with the cache cold. Such a task never ends by itself, so nothing waits for it any more: a background shell command that surely never ends (`npm run dev`, `vite`, `vitest --watch`, `docker compose up`, `ngrok http`, and the others in the table in `hooks/standing.ts`) no longer counts as running work. This holds at the pause, at the end of a countdown, for `asap` and on coming back after a long pause. Work that ends is waited for as before, and so is any command the mod does not know or cannot read safely (a subshell, `$(…)`, a script of your own). Writing the handoff at minute 55 is unchanged.
 
 ### Changed

@@ -12,7 +12,7 @@ from three layers, each a function that registers answers with `on`:
 
 - `withMod` records what the mod shows: toasts, log lines, debug lines, the command it registers, and each status line it sets
   (`seen.status`, `undefined` where it cleared one). It also answers `ui.render` with an empty band, as the host draws one with nothing
-  of the mod's in it.
+  of the mod's in it; a test about sharing that place with another mod hands it that mod's band instead (`band-compose.test.tsx`).
 - `sessionWith` is what the mod reads at a stop: context size, window, turn count, running agents, rate limits. It also brings a clock
   (`mock.clock`), so a test moves time on and lets what is due run (`clock.advance`, `clock.settle`). `world.slept` stands for system
   sleep: it moves the time the mod reads (`$.clock.now`) on by that much while the clock in memory, which fires the timers, stays where
