@@ -93,8 +93,9 @@ export type State = LevelMemo & {
   // message meanwhile is held and never sees the handoff. A switch to a fresh session hands on to `handingOver`.
   returning: boolean
   // What the handoff after a long pause knows of the session (idle-handoff.ts). `touch` is when the main loop last read or wrote the cache:
-  // the start of its last request. `read` is due at the first turn of every session, since a /clear does not reload the mod but ends what
-  // was known. `fresh`: the session began with no conversation (a start or a /clear), so its first request is the project's baseline.
+  // the start of its last request. `read` is due at the first turn of every session, since a /clear does not reload the mod but ends what was
+  // known, and stays due while the transcript read holds no answer yet. `fresh`: the session began with no conversation (a start or a
+  // /clear), so its first request is the project's baseline.
   idle: {
     // The step that writes the handoff, planned at the end of an answer, with when the pause began (`since`, kept for a compact that holds
     // the step back and plans it again); and the handoff written, until the person comes back or the pause ends.
@@ -103,6 +104,8 @@ export type State = LevelMemo & {
     // The pause ended while the handoff was being written (a turn not the command's, a compact, a change of model): why, so that the handoff
     // that comes is dropped.
     endedWhilePreparing: string | undefined
+    // The read once more a few seconds after a pause that found no answer in the transcript yet, which plans the pause if it can.
+    reread: { cancel: () => void } | undefined
     // The step that shows the band once the handoff written has gone cold, and whether it shows.
     coldTimer: { cancel: () => void } | undefined
     coldShown: boolean
@@ -126,6 +129,7 @@ export const freshIdle = (): State['idle'] => ({
   timer: undefined,
   prepared: undefined,
   endedWhilePreparing: undefined,
+  reread: undefined,
   coldTimer: undefined,
   coldShown: false,
   checkAgainst: undefined,

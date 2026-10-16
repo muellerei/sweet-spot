@@ -47,6 +47,52 @@ modTest('a pause whose reads fail still plans the step, from a read of its own',
   expect(host.modelForkPrompts).toHaveLength(1)
 })
 
+// The first turn of a fresh session can end before its answer is in the transcript (docs/host-behaviour.md, "the transcript can still lack
+// the turn's answer"). The pause after it reads once more a few seconds later and plans from that read, from the same last request.
+modTest('a first answer not yet in the transcript is read again a few seconds later, and the pause is planned then', LIVE_IDLE, async ($, on) => {
+  const { seen, world, host } = idleSession(on, { files: { [T]: '' } })
+  await answer($)
+  expect(idleLines(seen.logs)).toEqual(['debug: idle: not planned, cache lifetime unknown'])
+  host.files[T] = HOUR_TRANSCRIPT
+  await world.clock.advance(5_000)
+  expect(idleLines(seen.logs)).toEqual(['debug: idle: not planned, cache lifetime unknown', 'debug: idle: planned in 55 min'])
+  await world.clock.advance(55 * MINUTE - 5_001)
+  expect(host.modelForkPrompts).toHaveLength(0)
+  await world.clock.advance(1)
+  expect(host.modelForkPrompts).toHaveLength(1)
+})
+
+modTest('a turn before the read a few seconds later ends the pause, and the read plans nothing, though it ended with no answer', LIVE_IDLE, async ($, on) => {
+  const { seen, world, host } = idleSession(on, { files: { [T]: '' } })
+  await answer($)
+  host.files[T] = HOUR_TRANSCRIPT
+  await startTurn($, 't2')
+  await endTurn($, 'aborted', { turnId: 't2' })
+  await world.clock.advance(60 * MINUTE)
+  expect(idleLines(seen.logs)).toEqual(['debug: idle: not planned, cache lifetime unknown'])
+})
+
+modTest('a turn that starts while the read a few seconds later runs, and ends with no answer, leaves nothing planned', LIVE_IDLE, async ($, on) => {
+  const { seen, world, host } = idleSession(on, { files: { [T]: '' } })
+  await answer($)
+  host.files[T] = HOUR_TRANSCRIPT
+  host.during['fs.read'] = async () => {
+    await startTurn($, 't2')
+  }
+  await world.clock.advance(5_000)
+  await endTurn($, 'aborted', { turnId: 't2' })
+  await world.clock.advance(60 * MINUTE)
+  expect(idleLines(seen.logs)).toEqual(['debug: idle: not planned, cache lifetime unknown'])
+  expect(host.modelForkPrompts).toHaveLength(0)
+})
+
+modTest('a transcript that still holds no answer a few seconds later is not read again in the pause', LIVE_IDLE, async ($, on) => {
+  const { seen, world } = idleSession(on, { files: { [T]: '' } })
+  await answer($)
+  await world.clock.advance(60 * MINUTE)
+  expect(seen.logs.filter(l => l.startsWith('debug: idle: cache lifetime'))).toHaveLength(2)
+})
+
 modTest('a new turn before then ends the pause, and its own end plans again from its last request', LIVE_IDLE, async ($, on) => {
   const { world, host } = idleSession(on)
   await answer($)

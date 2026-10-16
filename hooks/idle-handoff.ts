@@ -34,6 +34,10 @@ const mainAnswers = function* (text: string): Generator<Record<string, unknown>>
   }
 }
 
+// Whether the main line has answered at all: a transcript with answers and no write is a session that writes none (caching off), and
+// reading it again tells nothing new; one with no answer yet is one the host has not caught up with.
+export const hasAnswer = (text: string): boolean => !mainAnswers(text).next().done
+
 // The lifetime the last write of the main line used. Five minutes wins where a write has both: that part goes cold first. Claude Code writes
 // it per entry (measured on 2.1.296, both lifetimes). Unknown where what was read holds no write. Every line is parsed: a read at the limit
 // (4 MiB, 1836 lines of a real transcript) takes about 8 ms on a cold call (measured with Bun), and it runs at the first turn and when the handoff is due.

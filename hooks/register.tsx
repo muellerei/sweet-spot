@@ -75,6 +75,7 @@ import {
   fireVerdict,
   firstBaselineOf,
   floorOf,
+  hasAnswer,
   idleFor,
   isHit,
   lifetimeOf,
@@ -768,6 +769,10 @@ const readIdle = async ($: Engine, state: State) => {
   // An end read with no write in it leaves the lifetime read before.
   const lifetime = text === undefined ? undefined : lifetimeOf(text)
   if (lifetime !== undefined) idle.lifetime = lifetime
+  // The first turn of a fresh session can end before the host has written its answer to the transcript (docs/host-behaviour.md, "the
+  // transcript can still lack the turn's answer"): where what was read holds no answer yet, the next turn reads again. A transcript that
+  // could not be read, or holds answers with no write, says the same next time.
+  if (idle.lifetime === undefined && text !== undefined && !hasAnswer(text)) idle.read = true
   if (idle.baseline === undefined) {
     try {
       const kept = (await $.store.get(baselineKey(await $.session.cwd()))) as { tokens?: unknown } | undefined
@@ -789,6 +794,8 @@ const endPause = ($: Engine, state: State, why: string): string | undefined => {
   const idle = state.idle
   // The step under way has no timer and nothing written yet: it is told, and drops what it writes.
   if (state.preparing && idle.prepared === undefined) idle.endedWhilePreparing = why
+  idle.reread?.cancel()
+  idle.reread = undefined
   if (idle.timer === undefined && idle.prepared === undefined) return undefined
   idle.timer?.cancel()
   idle.timer = undefined
@@ -823,10 +830,28 @@ const planIdle = async ($: Engine, config: Config, state: State, stop: Stop, tok
     timers: stop.session_crons?.length ?? 0,
   })
   const touch = idle.touch
-  if (!verdict.plan || touch === undefined) return log('debug', `idle: not planned, ${verdict.plan ? 'no request seen' : verdict.why}`)
+  if (!verdict.plan || touch === undefined) {
+    log('debug', `idle: not planned, ${verdict.plan ? 'no request seen' : verdict.why}`)
+    // The answer of the first turn may not be in the transcript yet: read once more a little later, and plan from that read.
+    if (idle.lifetime === undefined && idle.read && idle.transcript !== undefined) {
+      idle.reread = $.clock.after(REREAD_MS, () => void rereadIdle($, config, state, stop, tokens))
+    }
+    return
+  }
   const now = await $.clock.now()
   const wait = armIdle($, config, state, touch, now, now)
   log('debug', `idle: planned in ${Math.round(wait / 60_000)} min`)
+}
+
+// The transcript missed the answer by 0.21 s, measured in one session (docs/host-behaviour.md, "the transcript can still lack the turn's
+// answer"); five seconds leave room above that.
+const REREAD_MS = 5_000
+
+// A turn that starts while the read runs ends the pause, and finds nothing to cancel yet: it is seen here, after the read.
+const rereadIdle = async ($: Engine, config: Config, state: State, stop: Stop, tokens: number | undefined) => {
+  state.idle.reread = undefined
+  await readIdle($, state).catch(() => {})
+  if (state.idle.lifetime !== undefined && !state.answerRunning) await planIdle($, config, state, stop, tokens).catch(() => {})
 }
 
 // Sets the step for its time, from the touch; `since` is when the pause began, which the line at the return counts from. Gives the wait.
@@ -1292,8 +1317,8 @@ export const register: Register = (on, options) => {
     if (!main) log('debug', `agent ${e.agentId}, not a pause`)
     // Passed on after the read: it goes by the turn's own id, which no other event changes, and the handoff it wakes logs after this line.
     if (main && endOfTurn(state, e) === 'foreign') log('debug', `the end of turn ${e.turnId} is not the command's, still waiting for it`)
-    // The first turn of a session that ended in an answer, and is none of the mod's own handoff, reads the transcript. With no path seen yet
-    // the read waits for a turn that has one.
+    // The first turn of a session that ended in an answer, and is none of the mod's own handoff, reads the transcript, and so does each turn
+    // after it while the transcript read held no answer yet. With no path seen yet the read waits for a turn that has one.
     if (main && state.idle.read && state.idle.transcript !== undefined && !handingOver && e.reason === 'answer') await readIdle($, state).catch(() => {})
     if (paired !== undefined) await judge($, config, state, paired, handingOver)
     return next(e)

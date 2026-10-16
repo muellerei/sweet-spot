@@ -115,7 +115,9 @@ below 200,000 tokens the idle handoff works as before.
   wrote the cache says it. A change of model says it outright.
 - **Reading the transcript.** Up to 4 MiB the mod reads the file; above that it reads only its last 256 KiB with `tail -c`, the one
   process it starts. Without `tail` (Windows without the Git tools on the path) the lifetime stays unknown, nothing is planned, and a
-  `warn` line says so once a session.
+  `warn` line says so once a session. While the transcript holds no answer yet, the mod reads it once more five seconds later and plans
+  the pause from that read, and the next turn reads it again: the first turn of a fresh session can end before its answer is in the
+  transcript.
 - **The baseline.** A long first message raises it until the next fresh session; that errs on the safe side. The first message of a
   fresh session that a handoff of the mod began is the handoff, and is not taken. A resumed session uses the baseline kept for its
   project; with none kept yet, the first answer in its transcript, if the transcript is small enough to read whole.

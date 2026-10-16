@@ -61,15 +61,16 @@ the store, and `/sweet-spot redeliver` submits it, into the session the `/clear`
 **After a long pause.** The idle handoff ([idle-handoff.md](idle-handoff.md)) has its pure part in `idle-handoff.ts`: how much of the
 transcript to read (`readPlan`), the cache lifetime and the baseline found in it, the lower bound (`floorOf`), whether to plan
 (`planVerdict`), when the step is due (`prepareDueAt`), whether to write when it comes (`fireVerdict`), and how a return is judged
-(`returnVerdict`). `register.tsx` reads the transcript at the end of the first turn of each session (`readIdle`), takes the touch and the
-baseline from `turn.step`, plans at the pause after `atPause` (`planIdle`) and writes when the step comes (`prepareIdle`), through
-`prepare` in `relay.ts`: the user's command or the internal way, never a compact, and nothing delivered. While it writes, `preparing` in
-`state.ts` holds what `handingOver` holds (`underWay`). The first message after it takes the handoff at once (`claim` in `hold.ts`), and
-`comeBack` judges by the clock; a switch delivers through `deliverReturn`, the same `deliver` as every handoff. Every turn, the end of
-the session, a compact that goes through and a change of model end the pause (`endPause`); a compact holds the planned step back while it
-runs and sets it again where another hook answered `{ skip }` or the compact failed (`holdIdle`); while the handoff is written, a compact or a change of model
-marks it (`endedWhilePreparing`) and what is written is dropped, as does any turn but the command's own (a slash command, or the held
-message, whose turn starts while it is put in). `statusTail` in `status.ts` says where it stands.
+(`returnVerdict`). `register.tsx` reads the transcript at the end of the first turn of each session, and five seconds later and at each
+turn after it while the transcript held no answer yet (`readIdle`, `rereadIdle`), takes the touch and the baseline from `turn.step`, plans
+at the pause after `atPause` (`planIdle`) and writes when the step comes (`prepareIdle`), through `prepare` in `relay.ts`: the user's
+command or the internal way, never a compact, and nothing delivered. While it writes, `preparing` in `state.ts` holds what `handingOver`
+holds (`underWay`). The first message after it takes the handoff at once (`claim` in `hold.ts`), and `comeBack` judges by the clock; a
+switch delivers through `deliverReturn`, the same `deliver` as every handoff. Every turn, the end of the session, a compact that goes
+through and a change of model end the pause (`endPause`); a compact holds the planned step back while it runs and sets it again where
+another hook answered `{ skip }` or the compact failed (`holdIdle`); while the handoff is written, a compact or a change of model marks it
+(`endedWhilePreparing`) and what is written is dropped, as does any turn but the command's own (a slash command, or the held message,
+whose turn starts while it is put in). `statusTail` in `status.ts` says where it stands.
 
 ## Why it is split this way
 
