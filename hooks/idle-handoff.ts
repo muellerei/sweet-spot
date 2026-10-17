@@ -17,8 +17,9 @@ export const baselineOfUsage = (u: InputUsage): number => u.input_tokens + u.cac
 
 const count = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
 
-// The main line's answers, in order. A line that is not an entry (the cut first line of an end read, a broken write) is skipped.
-const mainAnswers = function* (text: string): Generator<Record<string, unknown>> {
+// The main line's entries, in order: a subagent's (side chain) are left out. A line that is not an entry (the cut first line of an end read,
+// a broken write) is skipped.
+const mainEntries = function* (text: string): Generator<Record<string, unknown>> {
   for (const line of text.split('\n')) {
     let entry: unknown
     try {
@@ -27,9 +28,16 @@ const mainAnswers = function* (text: string): Generator<Record<string, unknown>>
       continue
     }
     if (typeof entry !== 'object' || entry === null) continue
-    const e = entry as { type?: unknown; isSidechain?: unknown; message?: { usage?: unknown } }
-    if (e.type !== 'assistant' || e.isSidechain === true) continue
-    const usage = e.message?.usage
+    const e = entry as Record<string, unknown>
+    if (e.isSidechain !== true) yield e
+  }
+}
+
+// The main line's answers, in order.
+const mainAnswers = function* (text: string): Generator<Record<string, unknown>> {
+  for (const e of mainEntries(text)) {
+    if (e.type !== 'assistant') continue
+    const usage = (e.message as { usage?: unknown } | undefined)?.usage
     if (typeof usage === 'object' && usage !== null) yield usage as Record<string, unknown>
   }
 }
@@ -37,6 +45,15 @@ const mainAnswers = function* (text: string): Generator<Record<string, unknown>>
 // Whether the main line has answered at all: a transcript with answers and no write is a session that writes none (caching off), and
 // reading it again tells nothing new; one with no answer yet is one the host has not caught up with.
 export const hasAnswer = (text: string): boolean => !mainAnswers(text).next().done
+
+// Whether the main line was compacted at or after `since` (ms). The host marks every compact with a `compact_boundary` entry, also one whose
+// messages another hook gave and that no hook beneath it saw (measured on 2.1.302, a manual compact). A line with no readable time counts as none.
+export const compactedSince = (text: string, since: number): boolean => {
+  for (const e of mainEntries(text)) {
+    if (e.type === 'system' && e.subtype === 'compact_boundary' && typeof e.timestamp === 'string' && Date.parse(e.timestamp) >= since) return true
+  }
+  return false
+}
 
 // The lifetime the last write of the main line used. Five minutes wins where a write has both: that part goes cold first. Claude Code writes
 // it per entry (measured on 2.1.296, both lifetimes). Unknown where what was read holds no write. Every line is parsed: a read at the limit

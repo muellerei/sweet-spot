@@ -68,9 +68,11 @@ command or the internal way, never a compact, and nothing delivered. While it wr
 holds (`underWay`). The first message after it takes the handoff at once (`claim` in `hold.ts`), and `comeBack` judges by the clock; a
 switch delivers through `deliverReturn`, the same `deliver` as every handoff. Every turn, the end of the session, a compact that goes
 through and a change of model end the pause (`endPause`); a compact holds the planned step back while it runs and sets it again where
-another hook answered `{ skip }` or the compact failed (`holdIdle`); while the handoff is written, a compact or a change of model marks it
-(`endedWhilePreparing`) and what is written is dropped, as does any turn but the command's own (a slash command, or the held message,
-whose turn starts while it is put in). `statusTail` in `status.ts` says where it stands.
+another hook answered `{ skip }` or the compact failed (`holdIdle`); when the step comes, a compact marked in the transcript since the pause
+began ends it too, one another hook answered with its own messages that the mod never saw (`compactedSince`), read in a large transcript
+from the size it had when the pause was planned, which the step carries with `since`; while the handoff is written, a compact or a change of
+model marks it (`endedWhilePreparing`) and what is written is dropped, as does any turn but the command's own (a slash command, or the held
+message, whose turn starts while it is put in). `statusTail` in `status.ts` says where it stands.
 
 ## Why it is split this way
 

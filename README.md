@@ -118,10 +118,10 @@ Both ways bring the context down. They differ in what the session holds afterwar
 
 ## What it can reach
 
-- **Reads:** the transcript of the session, to learn how long its prompt cache lives (the whole file up to 4 MiB, above that its last 256 KiB), your handoff file, `~/.claude/sweet-spot/handoff-prompt.md` if you made one, and a listing of the temp directory to find a handoff the answer did not name, or of the folder of the file it does name, and the environment variables `HOME` and `TMPDIR`, to find those two places.
+- **Reads:** the transcript of the session, to learn how long its prompt cache lives (the whole file up to 4 MiB, above that its last 256 KiB, or, when the idle handoff comes due, everything written since the pause began if that is more), your handoff file, `~/.claude/sweet-spot/handoff-prompt.md` if you made one, and a listing of the temp directory to find a handoff the answer did not name, or of the folder of the file it does name, and the environment variables `HOME` and `TMPDIR`, to find those two places.
 - **Writes:** nothing. The message waiting to be delivered, and the baseline of each project folder for the idle handoff, live in the mod's store in Claude Code, which `/clear` does not touch.
 - **Network:** none. The model call that writes the handoff runs through Claude Code, and so does the compact.
-- **Own processes:** one. A transcript above 4 MiB is read at its end with `tail -c 262144 <transcript>`, with no shell; Claude Code's file read stops at 4 MiB. Without `tail` (Windows without the Git tools on the path) the idle handoff stays off for that session and a `warn` line says so.
+- **Own processes:** one. A transcript above 4 MiB is read at its end with `tail -c 262144 <transcript>`, or from where the pause began with `tail -c +<offset> <transcript>`, with no shell; Claude Code's file read stops at 4 MiB. Without `tail` (Windows without the Git tools on the path) the idle handoff stays off for that session and a `warn` line says so.
 
 To check this against the code yourself:
 

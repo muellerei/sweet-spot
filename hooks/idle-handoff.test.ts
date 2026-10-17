@@ -2,6 +2,7 @@ import { test, expect } from 'claude-code/testing'
 
 import {
   baselineOfUsage,
+  compactedSince,
   fireVerdict,
   firstBaselineOf,
   floorOf,
@@ -13,6 +14,7 @@ import {
   readPlan,
   returnVerdict,
 } from './idle-handoff'
+import { compactMark } from './idle-support'
 
 // The handoff after a long pause, the parts that need no host: how much of the transcript to read, and the cache lifetime and the
 // baseline found in it. The lines are shaped as Claude Code writes them; only the fields read here are kept.
@@ -68,6 +70,27 @@ test('broken lines, the cut first line of an end read and lines that are not ent
 test('with no write in what was read the lifetime is not known', () => {
   expect(lifetimeOf([user, readOnly].join('\n'))).toBeUndefined()
   expect(lifetimeOf('')).toBeUndefined()
+})
+
+const AT = Date.parse('2026-05-04T10:00:00.000Z')
+
+test('a compact marked at or after the given time counts, one before it does not', () => {
+  expect(compactedSince([user, compactMark('2026-05-04T10:00:00.000Z'), readOnly].join('\n'), AT)).toBe(true)
+  expect(compactedSince([compactMark('2026-05-04T09:59:59.999Z'), written(0, 900)].join('\n'), AT)).toBe(false)
+})
+
+test('a compact of a subagent (side chain), another system entry and a line with no readable time are no compact', () => {
+  const later = '2026-05-04T11:00:00.000Z'
+  const lines = [
+    compactMark(later, { isSidechain: true }),
+    compactMark(later, { subtype: 'informational' }),
+    compactMark('not a time'),
+    compactMark(undefined),
+    compactMark(later).slice(9),
+    user,
+  ]
+  expect(compactedSince(lines.join('\n'), AT)).toBe(false)
+  expect(compactedSince('', AT)).toBe(false)
 })
 
 test('the baseline is the input of a request: what was read, written and sent fresh, together', () => {
