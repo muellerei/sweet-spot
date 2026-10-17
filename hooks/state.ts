@@ -12,6 +12,11 @@ import { freshPairing, type Pairing, type Stop } from './pairing'
 // How the awaited turn of the handoff command ended: with its answer, or without one and why.
 export type Ended = { answer: string; rejected?: true } | { failure: string; cancelled?: true }
 
+// A pause of the session: when it began (`since`, which the line at the return counts from) and the size of the transcript then (`size`,
+// none where it could not be told). The step reads a transcript too large to read whole from there, so that a compact marked in the pause is
+// read however much it wrote after its mark.
+export type Pause = { since: number; size: number | undefined }
+
 // A handoff written in a pause and not yet handed over; in a dry run only the time it would have been written.
 // `since` is the end of the answer the pause began after.
 export type IdlePrepared = { kind: 'real'; text: string; file?: string; since: number } | { kind: 'simulated'; since: number }
@@ -97,9 +102,9 @@ export type State = LevelMemo & {
   // known, and stays due while the transcript read holds no answer yet. `fresh`: the session began with no conversation (a start or a
   // /clear), so its first request is the project's baseline.
   idle: {
-    // The step that writes the handoff, planned at the end of an answer, with when the pause began (`since`, kept for a compact that holds
-    // the step back and plans it again); and the handoff written, until the person comes back or the pause ends.
-    timer: { cancel: () => void; since: number } | undefined
+    // The step that writes the handoff, planned at the end of an answer, with its pause (kept for a compact that holds the step back and
+    // plans it again); and the handoff written, until the person comes back or the pause ends.
+    timer: ({ cancel: () => void } & Pause) | undefined
     prepared: IdlePrepared | undefined
     // The pause ended while the handoff was being written (a turn not the command's, a compact, a change of model): why, so that the handoff
     // that comes is dropped.

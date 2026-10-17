@@ -68,10 +68,11 @@ import {
   unregisteredLine,
 } from './report'
 import { endSeen, judgeable, stopSeen, turnStarted, type Stop } from './pairing'
-import { freshIdle, freshState, underWay, type IdlePrepared, type State } from './state'
+import { freshIdle, freshState, underWay, type IdlePrepared, type Pause, type State } from './state'
 import {
   HOUR_MS,
   baselineOfUsage,
+  compactedSince,
   fireVerdict,
   firstBaselineOf,
   floorOf,
@@ -744,7 +745,7 @@ const keepBaseline = async ($: Engine, state: State, usage: InputUsage) => {
 // Reads the transcript for the cache lifetime, and finds the baseline where the first request did not give it: kept for the project, or for
 // a resumed session with none kept, the first request in its transcript. A transcript above the limit is read at its end through `tail`, the
 // one process the mod starts; it holds the latest writes, not the first request. The path is never logged.
-const readIdle = async ($: Engine, state: State) => {
+const readIdle = async ($: Engine, state: State, sizeAtPause?: number) => {
   const idle = state.idle
   idle.read = false
   const log = logTo($, state)
@@ -753,10 +754,15 @@ const readIdle = async ($: Engine, state: State) => {
   const path = idle.transcript
   if (path !== undefined) {
     try {
-      const plan = readPlan((await $.fs.stat(path)).size)
+      const size = (await $.fs.stat(path)).size
+      const plan = readPlan(size)
       if (plan === 'read') text = String(await $.fs.read(path))
       else {
-        const end = await $.process.run(['tail', '-c', String(TAIL_BYTES), path])
+        // When the step comes, from where the pause began where that is further back than the end: a compact that keeps messages word for
+        // word writes them again after its mark (docs/host-behaviour.md, "a compact another hook answers"). `tail -c +n` starts at byte n,
+        // counted from 1. Its output is cut after 4 MiB, and the mark is the first thing a compact writes.
+        const from = sizeAtPause !== undefined && sizeAtPause < size - TAIL_BYTES ? `+${sizeAtPause + 1}` : String(TAIL_BYTES)
+        const end = await $.process.run(['tail', '-c', from, path])
         if (end.exitCode !== 0) throw new Error(`tail ended with ${end.exitCode}`)
         text = end.stdout
       }
@@ -783,6 +789,7 @@ const readIdle = async ($: Engine, state: State) => {
   }
   if (idle.baseline === undefined && !idle.fresh && whole && text !== undefined) idle.baseline = firstBaselineOf(text)
   log('debug', `idle: cache lifetime ${idle.lifetime ?? 'unknown'}, baseline ${idle.baseline === undefined ? 'unknown' : `${idle.baseline} tokens`}`)
+  return text
 }
 
 // The line of a pause that is over, and whether a handoff written went with it.
@@ -838,9 +845,20 @@ const planIdle = async ($: Engine, config: Config, state: State, stop: Stop, tok
     }
     return
   }
+  const size = await transcriptSize($, idle.transcript)
   const now = await $.clock.now()
-  const wait = armIdle($, config, state, touch, now, now)
+  const wait = armIdle($, config, state, touch, { since: now, size }, now)
   log('debug', `idle: planned in ${Math.round(wait / 60_000)} min`)
+}
+
+// The size of the transcript, or none where it cannot be told: the step then reads its end only, as before.
+const transcriptSize = async ($: Engine, path: string | undefined) => {
+  if (path === undefined) return undefined
+  try {
+    return (await $.fs.stat(path)).size
+  } catch {
+    return undefined
+  }
 }
 
 // The transcript missed the answer by 0.21 s, measured in one session (docs/host-behaviour.md, "the transcript can still lack the turn's
@@ -854,11 +872,11 @@ const rereadIdle = async ($: Engine, config: Config, state: State, stop: Stop, t
   if (state.idle.lifetime !== undefined && !state.answerRunning) await planIdle($, config, state, stop, tokens).catch(() => {})
 }
 
-// Sets the step for its time, from the touch; `since` is when the pause began, which the line at the return counts from. Gives the wait.
-const armIdle = ($: Engine, config: Config, state: State, touch: number, since: number, now: number) => {
+// Sets the step for its time, from the touch, for the pause it belongs to (`Pause` in state.ts). Gives the wait.
+const armIdle = ($: Engine, config: Config, state: State, touch: number, pause: Pause, now: number) => {
   const wait = Math.max(0, prepareDueAt(touch) - now)
-  const timer = $.clock.after(wait, () => void prepareIdle($, config, state, since))
-  state.idle.timer = { cancel: () => timer.cancel(), since }
+  const timer = $.clock.after(wait, () => void prepareIdle($, config, state, pause))
+  state.idle.timer = { cancel: () => timer.cancel(), ...pause }
   return wait
 }
 
@@ -870,27 +888,31 @@ const holdIdle = ($: Engine, config: Config | undefined, state: State) => {
   const held = idle.timer
   if (held === undefined || config === undefined) return () => Promise.resolve()
   held.cancel()
-  const standIn = { cancel: () => {}, since: held.since }
+  const pause: Pause = { since: held.since, size: held.size }
+  const standIn = { cancel: () => {}, ...pause }
   idle.timer = standIn
   return async () => {
-    if (idle.timer === standIn && idle.touch !== undefined) armIdle($, config, state, idle.touch, held.since, await $.clock.now())
+    if (idle.timer === standIn && idle.touch !== undefined) armIdle($, config, state, idle.touch, pause, await $.clock.now())
   }
 }
 
 // The step itself: the reads first, then every check and the mark in one go with no wait between, so that a turn of the person's that starts
 // meanwhile is seen and not taken for the mod's own.
-const prepareIdle = async ($: Engine, config: Config, state: State, since: number) => {
+const prepareIdle = async ($: Engine, config: Config, state: State, { since, size }: Pause) => {
   const idle = state.idle
   idle.timer = undefined
   idle.endedWhilePreparing = undefined
   const log = logTo($, state)
   try {
-    const [agents, now, usage] = await Promise.all([
+    const [agents, now, usage, text] = await Promise.all([
       $.agent.list(),
       $.clock.now(),
       $.session.usage(),
-      idle.transcript === undefined ? undefined : readIdle($, state),
+      idle.transcript === undefined ? undefined : readIdle($, state, size),
     ])
+    // A hook above the mod can answer a compact with messages of its own and not pass it on, so the mod's own hook never ends the pause
+    // (docs/host-behaviour.md, "a compact another hook answers"). The host marks it in the transcript all the same.
+    if (text !== undefined && compactedSince(text, since)) return log('debug', pauseOverLine('a compact in the transcript', false))
     const busy = state.answerRunning
       ? 'a turn runs'
       : underWay(state)

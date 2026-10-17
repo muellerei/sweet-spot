@@ -236,7 +236,8 @@ export type Host = {
   // Files whose size `fs.stat` answers with instead of their length, for a transcript too large to read whole.
   sizes: Record<string, number>
   // What `process.run` answers for `tail -c <n> <path>`, by path; a path not here fails, as on a machine with no `tail`. Each run is listed in `runs`.
-  tails: Record<string, string>
+  // The same end whatever `<n>` asks, or one by `<n>` (`262144`, `+5000001`).
+  tails: Record<string, string | ((count: string) => string | undefined)>
   runs: string[][]
   // The project folder, as `$.session.cwd()` answers it.
   cwd: string
@@ -318,8 +319,9 @@ export const hostWith = (on: TestOn, host: Partial<Host> = {}) => {
   // Only `tail -c <n> <path>` is known; anything else, or a path with no end set, fails as a missing program does.
   on('process.run', async (_, e) => {
     h.runs.push([...e.argv])
-    const [program, flag, , path] = e.argv
-    const end = program === 'tail' && flag === '-c' && path !== undefined ? h.tails[path] : undefined
+    const [program, flag, count, path] = e.argv
+    const tail = program === 'tail' && flag === '-c' && path !== undefined ? h.tails[path] : undefined
+    const end = typeof tail === 'function' ? tail(count ?? '') : tail
     if (end === undefined) return { deny: `spawn ${program} ENOENT` }
     return { value: { exitCode: 0, stdout: end, stderr: '', isStdoutTruncated: false } } as never
   })

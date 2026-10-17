@@ -1,6 +1,6 @@
 import { expect } from 'claude-code/testing'
 
-import { FIVE_TRANSCRIPT, HOUR_TRANSCRIPT, LIVE_IDLE, T, answer, band, idleLines, idleSession, modelSwitch, shown, typeKey } from './idle-support'
+import { compactMark, FIVE_TRANSCRIPT, HOUR_TRANSCRIPT, LIVE_IDLE, T, answer, band, idleLines, idleSession, modelSwitch, shown, typeKey } from './idle-support'
 import {
   answered,
   COMPACT_DONE,
@@ -181,6 +181,67 @@ modTest("the host's compact while idle that goes through ends the pause: nothing
   await world.clock.advance(60 * MINUTE)
   expect(host.modelForkPrompts).toHaveLength(0)
   expect(idleLines(seen.logs)).toContain('debug: idle: pause over, a compact')
+})
+
+// A hook above the mod can answer a compact with messages of its own and not pass it on: the mod's own hook never sees it. The host marks
+// every compact in the transcript all the same (docs/host-behaviour.md, "a compact another hook answers"), read when the step is due.
+const boundaryAt = (at: number) => compactMark(new Date(at).toISOString())
+
+modTest('a compact the mod never saw, marked in the transcript during the pause, ends it: nothing is written', LIVE_IDLE, async ($, on) => {
+  const { seen, world, host } = idleSession(on)
+  await world.clock.advance(10 * MINUTE)
+  await answer($)
+  await world.clock.advance(30 * MINUTE)
+  host.files[T] = [HOUR_TRANSCRIPT, boundaryAt(40 * MINUTE)].join('\n')
+  await world.clock.advance(60 * MINUTE)
+  expect(host.modelForkPrompts).toHaveLength(0)
+  expect(idleLines(seen.logs)).toContain('debug: idle: pause over, a compact in the transcript')
+})
+
+modTest('a compact marked in the transcript before the pause began leaves it: the handoff is written', LIVE_IDLE, async ($, on) => {
+  const { seen, world, host } = idleSession(on, { files: { [T]: [HOUR_TRANSCRIPT, boundaryAt(5 * MINUTE)].join('\n') } })
+  await world.clock.advance(10 * MINUTE)
+  await answer($)
+  await world.clock.advance(55 * MINUTE)
+  expect(host.modelForkPrompts).toHaveLength(1)
+  expect(idleLines(seen.logs)).toContain(PREPARED)
+})
+
+// A compact that keeps messages word for word writes them again after its mark (36 KB after four short ones, measured on 2.1.302), so in a
+// transcript read only at its end the mark can lie before the end: it is read from where the pause began.
+modTest('in a transcript too large to read whole, a compact that wrote more than its end after its mark still ends the pause', LIVE_IDLE, async ($, on) => {
+  const before = 5_000_000
+  const since = `+${before + 1}`
+  const { seen, world, host } = idleSession(on, {
+    sizes: { [T]: before },
+    tails: { [T]: count => (count === since ? [boundaryAt(40 * MINUTE), HOUR_TRANSCRIPT].join('\n') : HOUR_TRANSCRIPT) },
+  })
+  await world.clock.advance(10 * MINUTE)
+  await answer($)
+  await world.clock.advance(30 * MINUTE)
+  host.sizes[T] = before + 1_000_000
+  await world.clock.advance(60 * MINUTE)
+  expect(host.modelForkPrompts).toHaveLength(0)
+  expect(idleLines(seen.logs)).toContain('debug: idle: pause over, a compact in the transcript')
+  expect(host.runs.at(-1)).toEqual(['tail', '-c', since, T])
+})
+
+modTest('in a transcript too large to read whole that grew less than its end in the pause, only the end is read', LIVE_IDLE, async ($, on) => {
+  const { world, host } = idleSession(on, { sizes: { [T]: 5_000_000 }, tails: { [T]: HOUR_TRANSCRIPT } })
+  await answer($)
+  host.sizes[T] = 5_100_000
+  await world.clock.advance(55 * MINUTE)
+  expect(host.modelForkPrompts).toHaveLength(1)
+  expect(host.runs.at(-1)).toEqual(['tail', '-c', '262144', T])
+})
+
+modTest('a transcript whose size cannot be told when the pause is planned still plans it', LIVE_IDLE, async ($, on) => {
+  const { seen, world, host } = idleSession(on)
+  await answer($)
+  await world.clock.advance(MINUTE)
+  host.files = {}
+  await answer($, 't2', {}, false)
+  expect(idleLines(seen.logs).filter(l => l === 'debug: idle: planned in 55 min')).toHaveLength(2)
 })
 
 // The step can come due while a compact runs (the host's took 38 s at 210000 tokens, measured): it waits for the outcome, so that nothing is

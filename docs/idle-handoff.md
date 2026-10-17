@@ -45,7 +45,9 @@ conversation again.
 
 Any turn that starts in the meantime, the end of the session, a compact and a change of model end the pause; the next answer plans
 again. Typing and slash commands do not. A compact that another hook holds back (another mod, or a `PreCompact` hook in your settings)
-or that fails leaves the pause as it was, and a handoff that comes due while a compact runs waits for its outcome.
+or that fails leaves the pause as it was, and a handoff that comes due while a compact runs waits for its outcome. A compact that another
+hook answers with messages of its own reaches no hook beneath it, so the mod may not see it; Claude Code marks it in the transcript all
+the same, and when the handoff comes due a compact marked there since the pause began ends the pause, and nothing is written.
 
 ## Staying in the session
 
@@ -114,10 +116,11 @@ below 200,000 tokens the idle handoff works as before.
   does not tell a mod how long its cache lives, so the mod reads it from the transcript: the last answer of the main conversation that
   wrote the cache says it. A change of model says it outright.
 - **Reading the transcript.** Up to 4 MiB the mod reads the file; above that it reads only its last 256 KiB with `tail -c`, the one
-  process it starts. Without `tail` (Windows without the Git tools on the path) the lifetime stays unknown, nothing is planned, and a
-  `warn` line says so once a session. While the transcript holds no answer yet, the mod reads it once more five seconds later and plans
-  the pause from that read, and the next turn reads it again: the first turn of a fresh session can end before its answer is in the
-  transcript.
+  process it starts. When the handoff comes due it reads from where the pause began instead, if the file has grown by more than that
+  since: a compact that keeps messages word for word writes them again after the entry that marks it. Without `tail` (Windows without the
+  Git tools on the path) the lifetime stays unknown, nothing is planned, and a `warn` line says so once a session. While the transcript
+  holds no answer yet, the mod reads it once more five seconds later and plans the pause from that read, and the next turn reads it again:
+  the first turn of a fresh session can end before its answer is in the transcript.
 - **The baseline.** A long first message raises it until the next fresh session; that errs on the safe side. The first message of a
   fresh session that a handoff of the mod began is the handoff, and is not taken. A resumed session uses the baseline kept for its
   project; with none kept yet, the first answer in its transcript, if the transcript is small enough to read whole.
@@ -133,5 +136,9 @@ below 200,000 tokens the idle handoff works as before.
 - **A self-check.** That writing the handoff keeps the cache another hour is measured, not promised. After a warm return the mod checks
   the first request of the next turn; if it missed the cache, a `warn` line says so once, and for the rest of the session writing the
   handoff no longer counts as a read: coming back is judged from your own last request again.
+- **The same session open twice.** `claude --resume` on a session that is still open in another terminal writes to the same transcript. A
+  compact in one of them is marked there for both, and the other one's pause ends with nothing written: that session then goes on as it
+  would without the idle handoff. The mark cannot tell the two apart; it points at the last entry of the session that compacted, which is
+  the same for both where that one compacted before its first turn.
 - **A reload or a resume forgets it.** A change in `/config` reloads the mod, and quitting and `claude --resume` start without the
   handoff; the next answer plans again. A file your command wrote stays where it wrote it.

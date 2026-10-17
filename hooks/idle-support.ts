@@ -30,6 +30,10 @@ const entry = (fiveMinutes: number, oneHour: number) =>
     },
   })
 
+// A compact as Claude Code marks it in the transcript; only the fields the mod reads are kept.
+export const compactMark = (timestamp: unknown, extra: Record<string, unknown> = {}) =>
+  JSON.stringify({ type: 'system', subtype: 'compact_boundary', isSidechain: false, timestamp, ...extra })
+
 export const HOUR_TRANSCRIPT = [entry(0, 20_000), entry(0, 900)].join('\n')
 export const FIVE_TRANSCRIPT = [entry(20_000, 0)].join('\n')
 // The first request of the session: 51003 tokens, so the lower bound is 81003.

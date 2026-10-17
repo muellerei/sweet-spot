@@ -236,6 +236,13 @@ throwaway mod for the veto. Interactive runs through tmux, from the veto on thro
   Esc at 147659 tokens with a fallback set: cancelled, no fallback, no handoff.
 - **A veto by another mod resolves with `{ skip: 'probe veto' }` after 9 ms;** the compact does not run, and the event carries
   `trigger: "plugin"`.
+- **A compact another hook answers is still marked in the transcript.** A throwaway mod answered `/compact` with the last four of its
+  messages and did not call `next(e)`. The debug log read "a hook's 4 messages stand (hooked by …); core never ran", no hook beneath it
+  ran, and the transcript held a `compact_boundary` entry with `trigger: "manual"` afterwards; the `PostCompact` and
+  `SessionStart:compact` hooks of the settings ran too. After the entry the host wrote the kept messages again, with the attachments and
+  the context of the `SessionStart:compact` hooks: 36 KB for four short messages. _Measured 2026-10-17, Claude Code 2.1.302; the host's
+  compact while idle answered this way is not measured._ sweet-spot reads the entry when the idle handoff comes due (`compactedSince`), in
+  a transcript too large to read whole from where the pause began.
 - **Typing during the compact is held by the host itself:** `prompt.submit` fires 33 ms after the compact resolves, then an ordinary
   turn follows. The mod's hold needs no case of its own for it.
 - **The turn count and the session:** `$.session.turns()` went 1, 2, 3 (the compact counts as a turn, with no `turn.start` and no stop),
@@ -287,6 +294,10 @@ throwaway mod for the veto. Interactive runs through tmux, from the veto on thro
 - **Two Claude Code processes with the mod run side by side without trouble.** _Measured 2026-10-08 and 2026-10-09, version not
   recorded; test sessions ran beside a working session._ A mod that keeps its state in memory is per process; nothing is shared. Two
   handoffs at the same moment were not run.
+- **The same session open twice shares one transcript.** `claude --resume <id>` in a second terminal while the first still runs wrote its
+  turn to the same file, under the same `sessionId`, and its `/compact` left a `compact_boundary` entry there. The entry's
+  `logicalParentUuid` points at the last entry of the session that compacted. _Measured 2026-10-17, Claude Code 2.1.302; two sessions in
+  one folder, the transcript read after._
 
 ## Inside the mod
 
@@ -371,6 +382,7 @@ For the idle handoff:
 
 - the host's idle compaction: the minute it fires, its lower bound, `idleCompaction: false` keeping it off, a `{ skip }` stopping it,
   and `$.env.set` moving its lower bound
+- a compact another hook answers with its own messages still leaving a `compact_boundary` entry in the transcript
 
 ## Open
 
