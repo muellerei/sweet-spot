@@ -512,6 +512,12 @@ test('ASK_FOR_PATH: asks for the line handoffPath reads, and an answer that only
   expect(handoffPath(`${ASK_FOR_PATH}\nHANDOFF_PATH: /tmp/h.md`)).toBe('/tmp/h.md')
 })
 
+// A command that names its file by `mktemp` gets no ending on macOS, and a path without `.md` is no path: the request has to say so.
+test('ASK_FOR_PATH: says that only a file name that ends in .md is taken, the only kind handoffPath takes', async () => {
+  expect(ASK_FOR_PATH).toContain('ends in .md')
+  expect(handoffPath('HANDOFF_PATH: /var/folders/x/T/handoff-plan-lcOX')).toBeUndefined()
+})
+
 // The mod hands over at a size limit, so often in the middle of a task: the handoff has to carry what that task needs, whichever way it is written.
 test('the handoff request and the internal handoff prompt both say the work may be in the middle of a task and ask for what it needs', async () => {
   for (const request of [ASK_FOR_PATH, DEFAULT_PROMPT]) {

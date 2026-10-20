@@ -12,6 +12,8 @@ All notable changes to sweet-spot are listed here. The format follows [Keep a Ch
 
 - A compact that another hook held back still ended the pause: the handoff planned for minute 55 was never written, and one already written was dropped. Another mod, or a `PreCompact` hook in your settings, can answer a compact with `{ skip }`, and Claude Code does not try its own compact at minute 54 of a pause again, so the session was left with neither and the cache went cold. The pause now waits for the outcome: a compact held back or failed leaves it as it was, one that goes through ends it as before, and a handoff that comes due while a compact runs waits for it. A countdown still ends when a compact starts, so that no handover starts while it runs; it counts down again at the next pause ([#17](https://github.com/muellerei/sweet-spot/issues/17)).
 
+- A handoff through your own command was refused when its file had no `.md` ending, and the session was compacted instead. The mod takes only a `.md` path, but the request it gives the command did not say so, and a command that names its file by `mktemp` gets no ending on macOS; it happened twice in one session with the path named correctly. The request now says that only a path whose file name ends in `.md` is taken. The mod still takes no other path, and still asks the command for nothing but the path ([#24](https://github.com/muellerei/sweet-spot/issues/24)).
+
 ## [0.3.0] - 2026-10-16
 
 ### Added
