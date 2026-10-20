@@ -7,7 +7,8 @@ const MID_TASK =
   'This session is handed over because its context is large, often in the middle of a task. Cover everything the current task needs to carry on without reading it all again: the state of the work, the next step, the files it touches by path with what matters in each, and the decisions still open.'
 
 // The command prints no path by itself; this is the request it gets as its argument: what the handoff has to cover, and the path line.
-export const ASK_FOR_PATH = `${MID_TASK} End your final answer with one line: HANDOFF_PATH: <absolute path>`
+// The rule on the ending is said because a file named by `mktemp` gets none on macOS; it is said of the path, since the mod asks for nothing else.
+export const ASK_FOR_PATH = `${MID_TASK} Only a path whose file name ends in .md is taken. End your final answer with one line: HANDOFF_PATH: <absolute path>`
 
 const LINE = /^[\s>*_-]*HANDOFF_PATH:[ \t]*(.+?)\s*$/
 
