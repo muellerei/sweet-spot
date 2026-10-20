@@ -28,6 +28,7 @@ import {
   INTERNAL_HANDOFF_ALSO_FAILED,
   ANSWERED,
   modTest,
+  PENDING,
 } from './test-support'
 
 // When the user's command is missing or its turn brings no handoff, the mod writes the handoff itself instead: the same
@@ -88,12 +89,7 @@ const fallingBack: [string, (host: Host) => void, (w: SessionWorld, $: TestEngin
     },
     "the command's turn did not end within 5 minutes",
   ],
-  [
-    'no path is named and no file was written',
-    () => {},
-    (w, $) => commandTurnEnds($, w, 'Done, trust me.'),
-    'the answer names no handoff file and the temp directory has none from this run',
-  ],
+  ['no path is named and no file was written', () => {}, (w, $) => commandTurnEnds($, w, 'Done, trust me.'), 'the answer names no handoff file'],
   [
     'the file named cannot be read',
     () => {},
@@ -193,7 +189,15 @@ const notFallingBack: [string, (host: Host) => void, string, string][] = [
     `the fresh session did not get the handoff (a hook dropped it: held); it is in ${FILE}`,
     `HANDOFF_PATH: ${FILE}`,
   ],
-  ['the environment cannot be read', host => (host.envError = 'denied'), 'sweet-spot: $.env.get: denied', 'no line'],
+  [
+    'the pending message cannot be kept',
+    host => {
+      host.files[FILE] = NOTES
+      host.failStore.push(`set:${PENDING}`)
+    },
+    'sweet-spot: $.store.set: store is down',
+    `HANDOFF_PATH: ${FILE}`,
+  ],
 ]
 
 for (const [name, arrange, reason, answer] of notFallingBack) {

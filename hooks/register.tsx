@@ -134,7 +134,6 @@ const sessionIo = ($: Engine, state: State): Io => ({
   after: (ms, fn) => $.clock.after(ms, fn),
   readFile: path => $.fs.read(path),
   listDir: path => $.fs.list(path),
-  tmpdir: () => $.env.get('TMPDIR'),
   home: () => $.env.get('HOME'),
   modelFork: async prompt => {
     const r = await $.model.fork({ prompt })

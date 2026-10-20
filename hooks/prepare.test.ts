@@ -57,7 +57,6 @@ test("the command's way written alone gives the handoff and its file once the co
       commands: async () => ['handoff'],
       listDir: async () => [{ name: 'handoff-1.md', kind: 'file', mtimeMs: 2_000, size: 20 }],
       readFile: async () => 'Goal: ship it.',
-      tmpdir: async () => '/tmp',
     },
     steps,
   )
@@ -65,7 +64,7 @@ test("the command's way written alone gives the handoff and its file once the co
   // The command runs after the list and the clock are read: a few turns of the queue.
   for (let i = 0; i < 10; i++) await Promise.resolve()
   startOfTurn(state, 't1')
-  endOfTurn(state, { turnId: 't1', answer: 'Wrote /tmp/handoff-1.md', reason: 'answer' })
+  endOfTurn(state, { turnId: 't1', answer: 'HANDOFF_PATH: /tmp/handoff-1.md', reason: 'answer' })
   const r = await pending
   expect(r).toEqual({ text: firstMessage('Goal: ship it.'), file: '/tmp/handoff-1.md' })
   expect(steps).toEqual([`run handoff ${ASK_FOR_PATH}`])

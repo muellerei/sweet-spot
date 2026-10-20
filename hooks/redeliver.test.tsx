@@ -279,14 +279,7 @@ const reasons: [string, string, (host: Host) => void, (world: SessionWorld, $: T
     "the command's turn was interrupted",
     'old',
   ],
-  [
-    'no path is named',
-    'path',
-    () => {},
-    (w, $) => commandTurnEnds($, w, 'Done.'),
-    'the answer names no handoff file and the temp directory has none from this run',
-    'old',
-  ],
+  ['no path is named', 'path', () => {}, (w, $) => commandTurnEnds($, w, 'Done.'), 'the answer names no handoff file', 'old'],
   ['the file is empty', 'read', host => (host.files[FILE] = ' '), (w, $) => commandTurnEnds($, w, `HANDOFF_PATH: ${FILE}`), 'the handoff file is empty', 'old'],
   [
     '/clear fails',
@@ -311,11 +304,14 @@ const reasons: [string, string, (host: Host) => void, (world: SessionWorld, $: T
     'old',
   ],
   [
-    'the environment cannot be read',
+    'the pending message cannot be kept',
     'error',
-    host => (host.envError = 'denied'),
-    (w, $) => commandTurnEnds($, w, 'no line'),
-    'sweet-spot: $.env.get: denied',
+    host => {
+      host.files[FILE] = NOTES
+      host.failStore.push(`set:${PENDING}`)
+    },
+    (w, $) => commandTurnEnds($, w, `HANDOFF_PATH: ${FILE}`),
+    'sweet-spot: $.store.set: store is down',
     'old',
   ],
 ]

@@ -27,7 +27,7 @@ import {
 // that is the user's own stop, and no other way hands over after it. A rule that denied the call is no stop of the user's.
 
 const RUN = `run handoff ${ASK_FOR_PATH}`
-const NO_PATH = 'the answer names no handoff file and the temp directory has none from this run'
+const NO_PATH = 'the answer names no handoff file'
 const CANCELLED = 'cancelled, the session is as it was'
 
 const bash = ($: TestEngine, extra: object = {}) =>

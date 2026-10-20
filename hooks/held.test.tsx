@@ -169,7 +169,6 @@ const before: [string, (host: Host) => void, (world: SessionWorld, $: TestEngine
     },
   ],
   ['the file is empty', host => (host.files[FILE] = ' '), (w, $) => commandTurnEnds($, w, `HANDOFF_PATH: ${FILE}`)],
-  ['the environment cannot be read', host => (host.envError = 'denied'), (w, $) => commandTurnEnds($, w, 'no line')],
   [
     '/clear fails',
     host => {

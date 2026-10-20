@@ -14,6 +14,10 @@ All notable changes to sweet-spot are listed here. The format follows [Keep a Ch
 
 - A handoff through your own command was refused when its file had no `.md` ending, and the session was compacted instead. The mod takes only a `.md` path, but the request it gives the command did not say so, and a command that names its file by `mktemp` gets no ending on macOS; it happened twice in one session with the path named correctly. The request now says that only a path whose file name ends in `.md` is taken. The mod still takes no other path, and still asks the command for nothing but the path ([#24](https://github.com/muellerei/sweet-spot/issues/24)).
 
+### Security
+
+- A handoff through your own command whose answer named no file took the newest `handoff-*.md` in the temp directory. Nothing tied that file to the run: your other sessions share the temp directory, and where it is a shared `/tmp`, so do other users of the machine. The mod now takes only the file the answer names; an answer without a path fails at the `path` stage, and the fallback method, if one is set, takes over as it does for any other failure there.
+
 ## [0.3.0] - 2026-10-16
 
 ### Added
