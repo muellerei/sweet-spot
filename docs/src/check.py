@@ -43,7 +43,8 @@ expect(re.findall(r'Developed against Claude Code ([\d.]+);', readme), pinned[0]
        'README developed-against version vs first entry of the workflow matrix')
 
 # The diagnostic output is for developers only: one module owns it, and an environment variable,
-# never a setting, switches it on. Tests under hooks/ cannot read source files (the host allows
+# never a setting, switches it on. Only register.tsx reads the environment and writes the log, so
+# the level is read in one place. Tests under hooks/ cannot read source files (the host allows
 # relative imports and "claude-code" only), so this boundary is guarded here.
 VARIABLE = 'SWEET_SPOT_LOG_LEVEL'
 tracked = subprocess.run(['git', 'ls-files'], cwd=ROOT, capture_output=True, text=True,
@@ -55,7 +56,7 @@ for path in tracked:
     if re.search(r'\.test\.tsx?$', path) or path == 'hooks/test-support.ts':
         continue
     text = read(path)
-    for needle in ('ui.log', VARIABLE):
+    for needle in ('ui.log', 'env.get', VARIABLE):
         if needle in text:
             problems.append(f'{path}: {needle} belongs in hooks/register.tsx only')
 
