@@ -4,6 +4,8 @@ All notable changes to sweet-spot are listed here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-20
+
 ### Fixed
 
 - A compact that another hook answered with messages of its own did not end the pause, and the idle handoff was written at minute 55 from a context that was already compacted. A mod that replaces Claude Code's summary this way passes the compact to no hook beneath it, so sweet-spot never saw it. Claude Code marks every compact in the transcript; when the idle handoff comes due, the mod now reads that mark, and a compact since the pause began ends the pause with nothing written. In a transcript too large to read whole it reads from where the pause began, since a compact that keeps messages word for word writes them again after its mark ([#22](https://github.com/muellerei/sweet-spot/issues/22)).
@@ -16,7 +18,7 @@ All notable changes to sweet-spot are listed here. The format follows [Keep a Ch
 
 ### Security
 
-- A handoff through your own command whose answer named no file took the newest `handoff-*.md` in the temp directory. Nothing tied that file to the run: your other sessions share the temp directory, and where it is a shared `/tmp`, so do other users of the machine. The mod now takes only the file the answer names; an answer without a path fails at the `path` stage, and the fallback method, if one is set, takes over as it does for any other failure there.
+- A handoff through your own command whose answer named no file took the newest `handoff-*.md` in the temp directory. Nothing tied that file to the run: your other sessions share the temp directory, and where it is a shared `/tmp`, so do other users of the machine. The mod now takes only the file the answer names; an answer without a path fails at the `path` stage, and the fallback method, if one is set, takes over as it does for any other failure there. See [GHSA-pf8f-rw68-qgf3](https://github.com/muellerei/sweet-spot/security/advisories/GHSA-pf8f-rw68-qgf3).
 
 ## [0.3.0] - 2026-10-16
 
