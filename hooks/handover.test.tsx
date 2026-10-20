@@ -27,12 +27,14 @@ import {
   modTest,
   methods,
   ANSWERED,
+  PENDING,
 } from './test-support'
 
 // The handoff through the user's own command, with the dry run off: the command runs as a turn of its own, the end of that turn is
 // awaited, the file it names is read, and the session is cleared and fed with it.
 
 const RUN = `run handoff ${ASK_FOR_PATH}`
+const NO_PATH = 'the answer names no handoff file'
 
 type World = SessionWorld
 
@@ -133,39 +135,22 @@ modTest("the end of a turn that is not the command's is not the end awaited", LI
   expect(host.steps).toEqual([RUN, 'run clear', `submit ${firstMessage(NOTES)}`])
 })
 
-modTest('without a path in the answer the newest handoff file written since the command started is taken', LIVE, async ($, on) => {
-  withMod(on)
+// Nothing ties a file in the temp directory to the run: another session of the same user, or another user of a shared /tmp, may have
+// written it, and a modification time set ahead passes any check against the start of the run.
+modTest('without a path in the answer no handoff file in the temp directory is taken, however new', LIVE, async ($, on) => {
+  const seen = withMod(on)
   const world = sessionWith(on)
-  const host = hostWith(on, { tmpdir: '/var/T/', files: { '/var/T/handoff-new.md': NOTES } })
+  const host = hostWith(on, { files: { '/tmp/handoff-planted.md': 'not yours', '/tmp/handoff-new.md': NOTES } })
   await reachThreshold($, world)
   const now = world.clock.now()
   host.listing = [
-    { name: 'handoff-stale.md', mtimeMs: now - 1 },
+    { name: 'handoff-planted.md', mtimeMs: Date.parse('2099-01-01') },
     { name: 'handoff-new.md', mtimeMs: now + 5 },
-    { name: 'handoff-mid.md', mtimeMs: now + 1 },
   ]
   await commandTurnEnds($, world, 'Written, but I forgot the line.')
-  expect(host.steps).toEqual([RUN, 'run clear', `submit ${firstMessage(NOTES)}`])
-})
-
-modTest('with no TMPDIR the temp directory is /tmp', LIVE, async ($, on) => {
-  withMod(on)
-  const world = sessionWith(on)
-  const host = hostWith(on, { tmpdir: undefined, files: { '/tmp/handoff-a.md': NOTES } })
-  await reachThreshold($, world)
-  host.listing = [{ name: 'handoff-a.md', mtimeMs: world.clock.now() }]
-  await commandTurnEnds($, world, 'no line')
-  expect(host.steps).toEqual([RUN, 'run clear', `submit ${firstMessage(NOTES)}`])
-})
-
-modTest('the file of the answer wins over a newer one in the temp directory', LIVE, async ($, on) => {
-  withMod(on)
-  const world = sessionWith(on)
-  const host = hostWith(on, { files: { [FILE]: NOTES, '/tmp/handoff-newer.md': 'other' } })
-  await reachThreshold($, world)
-  host.listing = [{ name: 'handoff-newer.md', mtimeMs: world.clock.now() + 9 }]
-  await commandTurnEnds($, world, `HANDOFF_PATH: ${FILE}`)
-  expect(host.steps[2]).toBe(`submit ${firstMessage(NOTES)}`)
+  expect(host.steps).toEqual([RUN])
+  // The internal handoff, the fallback method here, finds no conversation in the test host: the handover fails after it.
+  expect(seen.logs.slice(0, 2)).toEqual([DUE, fellBack(NO_PATH)])
 })
 
 // Each of these leaves the session as it was and says why; a later stop, once the gap has passed, tries again.
@@ -219,13 +204,7 @@ const failing: [string, (host: ReturnType<typeof hostWith>) => void, (w: World, 
     "the command's turn did not end within 5 minutes",
     [RUN],
   ],
-  [
-    'no path is named and no file was written',
-    () => {},
-    async (w, $) => commandTurnEnds($, w, 'Done, trust me.'),
-    'the answer names no handoff file and the temp directory has none from this run',
-    [RUN],
-  ],
+  ['no path is named and no file was written', () => {}, async (w, $) => commandTurnEnds($, w, 'Done, trust me.'), 'the answer names no handoff file', [RUN]],
   [
     'the file named cannot be read',
     () => {},
@@ -245,17 +224,20 @@ const failing: [string, (host: ReturnType<typeof hostWith>) => void, (w: World, 
     [RUN, 'run clear'],
   ],
   [
-    'the environment cannot be read',
-    host => (host.envError = 'denied'),
-    async (w, $) => commandTurnEnds($, w, 'no line'),
-    'sweet-spot: $.env.get: denied',
+    'the pending message cannot be kept',
+    host => {
+      host.files[FILE] = NOTES
+      host.failStore.push(`set:${PENDING}`)
+    },
+    async (w, $) => commandTurnEnds($, w, `HANDOFF_PATH: ${FILE}`),
+    'sweet-spot: $.store.set: store is down',
     [RUN],
   ],
 ]
 
 // A handoff the command did not give is tried with the internal handoff next (the tests of that are in their own file); here the internal handoff gives nothing.
 // An interrupted turn is the user's own stop and is said as a cancel.
-const notReplaced = ['/clear fails', 'the environment cannot be read', 'its turn is interrupted']
+const notReplaced = ['/clear fails', 'the pending message cannot be kept', 'its turn is interrupted']
 for (const [name, arrange, act, own, steps] of failing) {
   const replaced = !notReplaced.includes(name)
   // A failure at /clear leaves the fallback nothing to try: it needs /clear too, and the reason says so.
@@ -273,7 +255,7 @@ for (const [name, arrange, act, own, steps] of failing) {
     expect(seen.logs).toEqual(said)
     expect(seen.toasts).toEqual(said)
     host.failRun = []
-    host.envError = undefined
+    host.failStore = []
     await startTurn($, 't3')
     await endTurn($, 'answer', { turnId: 't3' })
     await stop($)

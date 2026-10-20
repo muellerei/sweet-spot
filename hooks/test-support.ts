@@ -194,8 +194,7 @@ export type Host = {
   commands: string[]
   // Files by absolute path; a path that is not here cannot be read.
   files: Record<string, string>
-  // The temp directory: its name (TMPDIR) and what lies in it; the home directory (HOME).
-  tmpdir: string | undefined
+  // What a directory listing shows, whichever directory is listed; the home directory (HOME).
   listing: { name: string; mtimeMs: number; size?: number }[]
   home: string | undefined
   // Commands whose run rejects (the engine's own words for it: a hook that throws leaves nothing to answer); a reason the submit is
@@ -253,7 +252,6 @@ export const hostWith = (on: TestOn, host: Partial<Host> = {}) => {
   const h: Host = {
     commands: ['handoff'],
     files: {},
-    tmpdir: '/tmp',
     listing: [],
     home: '/home/me',
     failRun: [],
@@ -328,13 +326,13 @@ export const hostWith = (on: TestOn, host: Partial<Host> = {}) => {
   on('session.cwd', async () => ({ value: h.cwd }))
   // Assumed: every entry is a file; the host's listing also tells directories and links apart, which the mod does not read.
   on('fs.list', async () => ({ value: h.listing.map(l => ({ name: l.name, kind: 'file', size: l.size ?? 1, mtimeMs: l.mtimeMs, isLink: false })) }) as never)
-  // Assumed: `env.get` answers a variable by its name; HOME, TMPDIR and the log level are asked for, and anything else gets the temp
-  // directory. That a read can fail at all is an assumption too: nothing measured names a cause.
+  // Assumed: `env.get` answers a variable by its name; HOME and the log level are asked for, and anything else is unset. That a read can
+  // fail at all is an assumption too: nothing measured names a cause.
   on('env.get', async (_, e) => {
     if (e.name === 'SWEET_SPOT_LOG_LEVEL') await once(h, 'read log level')
     if (e.name === 'SWEET_SPOT_LOG_LEVEL') return h.logLevelFails ? { deny: 'environment is not readable' } : { value: h.logLevel }
     if (h.envError !== undefined) return { deny: h.envError }
-    return { value: e.name === 'HOME' ? h.home : h.tmpdir }
+    return { value: e.name === 'HOME' ? h.home : undefined }
   })
   on('tool.call', async () => (h.toolResults.shift() ?? { result: 'ok', text: 'ok' }) as never)
   on('session.compact', async (_, e) => {

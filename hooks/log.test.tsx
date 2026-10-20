@@ -315,15 +315,14 @@ modTest('the handoff is logged step by step', LIVE, async ($, on) => {
   ])
 })
 
-// The path comes from the model's answer, or from the name the command gave its file: a line that carries it would put it into a bug report.
-modTest('no line carries the path of the handoff file, named by the answer or found in the temp directory', LIVE, async ($, on) => {
+// The path comes from the model's answer: a line that carries it would put it into a bug report.
+modTest('no line carries the path of the handoff file the answer names', LIVE, async ($, on) => {
   const seen = withMod(on)
   const world = sessionWith(on)
-  const host = hostWith(on, { ...AT('trace'), tmpdir: '/var/T/', files: { '/var/T/handoff-new.md': NOTES, [FILE]: NOTES } })
+  hostWith(on, { ...AT('trace'), files: { '/var/T/handoff-new.md': NOTES } })
   await reachThreshold($, world)
-  host.listing = [{ name: 'handoff-new.md', mtimeMs: world.clock.now() + 5 }]
-  await commandTurnEnds($, world, 'Written, but I forgot the line.')
-  expect(seen.logs).toContain('debug: the answer names no file, the temp directory has one')
+  await commandTurnEnds($, world, 'HANDOFF_PATH: /var/T/handoff-new.md')
+  expect(seen.logs).toContain('debug: the answer names a file')
   expect(seen.logs.filter(line => line.includes('handoff-new.md') || line.includes('/var/T/'))).toEqual([])
 })
 

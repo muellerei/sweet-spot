@@ -2,7 +2,7 @@ import { test, expect } from 'claude-code/testing'
 
 import { DEFAULTS, configOf } from './config'
 import { decide, effectiveThreshold, laterAt, oneShots, running, shrunk, standingOf, thresholdInForce, waiting, type Decision, type Snapshot } from './decide'
-import { DEFAULT_PROMPT, ASK_FOR_PATH, firstMessage, modelForkFailure, modelForkKind, handoffPath, newestHandoff, promptFrom, promptPath } from './handoff'
+import { DEFAULT_PROMPT, ASK_FOR_PATH, firstMessage, modelForkFailure, modelForkKind, handoffPath, promptFrom, promptPath } from './handoff'
 import { endSeen, freshPairing, judgeable, stopSeen, turnStarted, type TaskSummary } from './pairing'
 import { reportOf } from './report'
 
@@ -524,22 +524,6 @@ test('the handoff request and the internal handoff prompt both say the work may 
     expect(request).toContain('middle of a task')
     expect(request).toContain('files')
   }
-})
-
-test('newestHandoff: the newest handoff file from the time the command started on, by name', async () => {
-  const f = (name: string, mtimeMs: number, kind: 'file' | 'dir' = 'file') => ({ name, kind, size: 1, mtimeMs, isLink: false })
-  const entries = [
-    f('handoff-old.md', 100),
-    f('handoff-a.md', 200),
-    f('handoff-b.md', 300),
-    f('handoff-dir.md', 900, 'dir'),
-    f('notes.md', 800),
-    f('handoff-b.txt', 700),
-  ]
-  expect(newestHandoff(entries, 150)).toBe('handoff-b.md')
-  expect(newestHandoff(entries, 300)).toBe('handoff-b.md')
-  expect(newestHandoff(entries, 301)).toBeUndefined()
-  expect(newestHandoff([], 0)).toBeUndefined()
 })
 
 test('firstMessage: the handoff leads, with a line that says what it is and asks to go on', async () => {

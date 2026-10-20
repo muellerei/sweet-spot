@@ -33,10 +33,6 @@ export type Entry = { name: string; kind: string; mtimeMs: number; size: number 
 // A handoff is a page or two; the limit only keeps a file that is not one from becoming the first message.
 export const MAX_HANDOFF_BYTES = 200_000
 
-// The way out when the answer names no path: the file the command wrote while it ran, found by its name in the temp directory.
-export const newestHandoff = (entries: readonly Entry[], since: number): string | undefined =>
-  entries.filter(e => e.kind === 'file' && /^handoff-.*\.md$/.test(e.name) && e.mtimeMs >= since).sort((a, b) => b.mtimeMs - a.mtimeMs)[0]?.name
-
 // A file the answer names is checked against its entry in its directory: written since the command started, and of a size a handoff can be.
 // Only a file that can be seen to fail is refused; one whose directory cannot be listed is let through.
 export const unfit = (entry: Entry | undefined, file: string, since: number): { stage: 'path' | 'read'; reason: string } | undefined => {

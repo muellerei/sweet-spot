@@ -12,12 +12,10 @@ import {
   modelForkFailure,
   modelForkKind,
   handoffPath,
-  newestHandoff,
   promptFrom,
   promptPath,
   unfit,
   withHeld,
-  withoutTrailingSeparator,
   type Entry,
   type ModelForkAnswer,
   type ModelForkUsage,
@@ -37,7 +35,6 @@ export type Io = {
   after: (ms: number, fn: () => void) => { cancel: () => void }
   readFile: (path: string) => Promise<unknown>
   listDir: (path: string) => Promise<Entry[]>
-  tmpdir: () => Promise<string | undefined>
   home: () => Promise<string | undefined>
   modelFork: (prompt: string) => Promise<ModelForkAnswer>
   // Claude Code's own /compact, with no instructions. It resolves with `skip` when a hook vetoed it, and rejects when the host refuses.
@@ -118,13 +115,6 @@ export const endOfTurn = (state: State, e: { turnId: string; answer: string; rea
   else if (e.reason === 'aborted') wait.end({ failure: "the command's turn was interrupted", cancelled: true })
   else wait.end({ failure: `the command's turn ended without an answer (${e.reason})` })
   return 'own'
-}
-
-// The user's command writes the file wherever it likes; when the answer does not say where, it is the newest one in the temp directory.
-const newestInTemp = async (io: Io, since: number): Promise<string | undefined> => {
-  const dir = withoutTrailingSeparator((await io.tmpdir()) ?? '/tmp')
-  const name = newestHandoff(await io.listDir(dir).catch(() => []), since)
-  return name === undefined ? undefined : `${dir}/${name}`
 }
 
 const FAILURE = 'failure'
@@ -323,27 +313,21 @@ export const prepareByCommand = async (io: Io, state: State, command: string): P
   }
   const end = await wait.ended
   if ('failure' in end) return failed(end.cancelled ? 'cancelled' : 'turn', end.failure)
-  const named = handoffPath(end.answer)
-  const file = named ?? (await newestInTemp(io, since))
+  // Only the file the answer names is taken. Nothing ties a file in the temp directory to this run: another session of the same user
+  // shares that directory, and so may another user where it is a shared /tmp, with a modification time set ahead of any start.
+  const file = handoffPath(end.answer)
   io.log('trace', "the command's turn ended")
   // No path in the line: the answer names it, and a log line is copied into bug reports.
-  io.log(
-    'debug',
-    named !== undefined
-      ? 'the answer names a file'
-      : `the answer names no file, ${file === undefined ? 'the temp directory has none' : 'the temp directory has one'}`,
-  )
+  io.log('debug', file !== undefined ? 'the answer names a file' : 'the answer names no file')
   if (file === undefined) {
     // No file because the user declined a permission the command asked for: their own stop, not a handoff that is missing.
     if (end.rejected) return failed('cancelled', 'you declined a permission the command asked for')
-    return failed('path', 'the answer names no handoff file and the temp directory has none from this run')
+    return failed('path', 'the answer names no handoff file')
   }
-  if (named !== undefined) {
-    const at = Math.max(named.lastIndexOf('/'), named.lastIndexOf('\\'))
-    const entry = (await io.listDir(named.slice(0, at + 1) || '/').catch(() => [])).find(e => e.name === named.slice(at + 1))
-    const bad = unfit(entry, named, since)
-    if (bad !== undefined) return failed(bad.stage, bad.reason)
-  }
+  const at = Math.max(file.lastIndexOf('/'), file.lastIndexOf('\\'))
+  const entry = (await io.listDir(file.slice(0, at + 1) || '/').catch(() => [])).find(e => e.name === file.slice(at + 1))
+  const bad = unfit(entry, file, since)
+  if (bad !== undefined) return failed(bad.stage, bad.reason)
   let handoff: unknown
   try {
     handoff = await io.readFile(file)
