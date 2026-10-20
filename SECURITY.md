@@ -9,9 +9,10 @@ the mod did, and what you expected. I read every report and answer it.
 
 ## What counts
 
-sweet-spot reads your handoff file and your prompt file, and lists the
-folder of the handoff file the answer names. It writes no files, opens no network
-connection and starts no processes of its own. [What it can reach](README.md#what-it-can-reach)
+sweet-spot reads the session's transcript, your handoff file and your prompt
+file, and lists the folder of the handoff file the answer names. It writes no files, opens no network
+connection and starts one process of its own: `tail`, to read the end of a
+long transcript. [What it can reach](README.md#what-it-can-reach)
 says the same in full, and `claude plugin validate .` shows the same list
 from the code. So these are worth a report:
 
