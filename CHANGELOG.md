@@ -4,6 +4,8 @@ All notable changes to sweet-spot are listed here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-10-23
+
 ### Fixed
 
 - With the advisor on, a fresh session whose first request called it stored a baseline about twice the real size, and the idle handoff was no longer planned in that project where it would have paid off. Claude Code reports a request with the advisor inside it as the sum of its passes. sweet-spot now tells a sum from the usage against the context Claude Code reports after the request, and keeps that context as the baseline; read back from the transcript of a resumed session, the baseline is that request's last pass ([#29](https://github.com/muellerei/sweet-spot/issues/29)).
