@@ -71,7 +71,7 @@ import { endSeen, judgeable, stopSeen, turnStarted, type Stop } from './pairing'
 import { freshIdle, freshState, underWay, type IdlePrepared, type Pause, type State } from './state'
 import {
   HOUR_MS,
-  baselineOfUsage,
+  baselineOf,
   compactedSince,
   fireVerdict,
   firstBaselineOf,
@@ -724,16 +724,28 @@ const judge = async ($: Engine, config: Config, state: State, paired: ReturnType
   } else log('debug', `judge: the turn ended in ${paired.end}, no pause`)
 }
 
+// The context the host reports, or `undefined` where it reports none or the read fails.
+const readContext = async ($: Engine, state: State): Promise<number | undefined> => {
+  try {
+    const tokens = (await $.session.usage()).context.tokens
+    return tokens !== undefined && tokens > 0 ? tokens : undefined
+  } catch {
+    logTo($, state)('debug', 'idle: the context after the request could not be read')
+    return undefined
+  }
+}
+
 // The baseline belongs to the project's setup (system prompt, tools, MCP servers, CLAUDE.md), not to one session: kept per project folder.
 const baselineKey = (cwd: string) => `idle-baseline:${cwd}`
 
 // The first request of a fresh session is the project's baseline, unless the session is one a handoff of the mod began: its first message
-// is the handoff. Whatever fails here leaves the baseline as it was; the next fresh session tries again.
-const keepBaseline = async ($: Engine, state: State, usage: InputUsage) => {
+// is the handoff. A request with the advisor inside it reports the sum of its passes, so where the usage sums several, the context the host
+// reported after it counts. Whatever fails here leaves the baseline as it was; the next fresh session tries again.
+const keepBaseline = async ($: Engine, state: State, usage: InputUsage, context: number | undefined) => {
   try {
     const [id, cwd, at] = await Promise.all([$.session.id(), $.session.cwd(), $.clock.now()])
     if (id === state.deliveredInto) return
-    const tokens = baselineOfUsage(usage)
+    const tokens = baselineOf(usage, context)
     state.idle.baseline = tokens
     await $.store.set(baselineKey(cwd), { tokens, at })
   } catch {
@@ -774,9 +786,9 @@ const readIdle = async ($: Engine, state: State, sizeAtPause?: number) => {
   // An end read with no write in it leaves the lifetime read before.
   const lifetime = text === undefined ? undefined : lifetimeOf(text)
   if (lifetime !== undefined) idle.lifetime = lifetime
-  // The first turn of a fresh session can end before the host has written its answer to the transcript (docs/host-behaviour.md, "the
-  // transcript can still lack the turn's answer"): where what was read holds no answer yet, the next turn reads again. A transcript that
-  // could not be read, or holds answers with no write, says the same next time.
+  // A turn can end before the host has written its answer to the transcript, the first of a fresh session as well as a later one
+  // (docs/host-behaviour.md, "the transcript can still lack the turn's answer"): where what was read holds no answer yet, the next turn
+  // reads again. A transcript that could not be read, or holds answers with no write, says the same next time.
   if (idle.lifetime === undefined && text !== undefined && !hasAnswer(text)) idle.read = true
   if (idle.baseline === undefined) {
     try {
@@ -946,9 +958,11 @@ const prepareIdle = async ($: Engine, config: Config, state: State, { since, siz
         log('info', `idle: handoff prepared, ${r.text.length} characters`)
         // Reading the cache keeps it for another hour from when the model was asked (measured); a request that missed it may have written a
         // short-lived entry of its own. The command's turn needs no check: its requests read or write the session's own entry, and each moved
-        // the touch as it went out.
+        // the touch as it went out. A `$.model.fork` request that tries a tool is refused and asks again, and its usage sums both: the
+        // second reads what the first wrote. The context it is measured by is the session's, which the call leaves as it was (measured).
         if (r.began !== undefined && !idle.doubted) {
-          if (isHit(r.usage, usage.context.tokens ?? Number.POSITIVE_INFINITY)) idle.touch = r.began
+          const context = usage.context.tokens
+          if (isHit(r.usage, context ?? Number.POSITIVE_INFINITY, context)) idle.touch = r.began
           else log('debug', 'idle: the handoff missed the cache, the touch stays')
         }
         const touch = idle.touch ?? now
@@ -1182,16 +1196,30 @@ export const register: Register = (on, options) => {
     if (!(state.preparing && idle.doubted)) idle.touch = await $.clock.now()
     const r = yield* next(e)
     const against = idle.checkAgainst
+    const due = e.index === 0 && r.usage !== null && (against !== undefined || idle.baselineDue)
+    // The context after the request, read once and only where the check or the baseline needs it. Before the step the host still reports
+    // the previous request's (none before a session's first), so it is read here, after it.
+    const context = due ? await readContext($, state) : undefined
     if (against !== undefined && e.index === 0) {
       idle.checkAgainst = undefined
-      if (r.usage !== null && !isHit(r.usage, against) && !idle.doubted) {
-        idle.doubted = true
-        logTo($, state)('warn', 'idle: the request after a warm return missed the cache, the handoff written no longer counts as reading it')
+      // A request with the advisor inside it reports the sum of its passes, and the second reads what the first wrote: its share is what
+      // the first pass read. With no context to tell that by, the check counts it a miss; not judging could take a cold cache for a warm one.
+      if (r.usage !== null && !idle.doubted) {
+        const why =
+          context === undefined
+            ? 'the host reports no context for the request after a warm return'
+            : !isHit(r.usage, against, context)
+              ? 'the request after a warm return missed the cache'
+              : undefined
+        if (why !== undefined) {
+          idle.doubted = true
+          logTo($, state)('warn', `idle: ${why}, the handoff written no longer counts as reading it`)
+        }
       }
     }
     if (idle.baselineDue && e.index === 0) {
       idle.baselineDue = false
-      if (r.usage !== null) await keepBaseline($, state, r.usage)
+      if (r.usage !== null) await keepBaseline($, state, r.usage, context)
     }
     return r
   })

@@ -196,16 +196,32 @@ Contents: [Events and their order](#events-and-their-order) · [`/clear` and the
   cache (115227 read, 73 written). Without the call, the return 62 minutes after the turn wrote the session's own 66960 tokens again.
   _Measured 2026-10-12 and 2026-10-13, Claude Code 2.1.296; `claude-sonnet-5-5`, three sessions and a confirming run._ The command's
   turn does the same. The idle handoff counts on it, and checks it after every warm return.
+- **A `$.model.fork` call does not call the advisor,** not even when asked to. _Measured 2026-10-23, Claude Code 2.1.309; a throwaway mod
+  with an `immediate` command calling `$.model.fork`._
+- **A tool a `$.model.fork` call tries is refused, and the call asks again.** Its `usage` is then the sum of both requests, the second
+  reading what the first wrote, and the mod's `tool.call` hooks run for the attempt. With the handoff prompt the model tried no tool in two
+  calls; asked to, it did in two. The session's context is the same before and after the call. _Measured 2026-10-23, Claude Code 2.1.309;
+  the same throwaway mod._ The idle handoff checks such a usage by what its first request read.
 - **A `$.model.fork` call from a timer raises no turn events,** neither `turn.start`, `turn.step`, `turn.complete` nor `classic.Stop`,
   and Claude Code's status line does not count it: its cache expiry still shows the end of the last turn plus an hour. _Measured
   2026-10-13, Claude Code 2.1.296; the same runs._ What arrives while such a call runs comes from the person or from elsewhere.
 - **`turn.step` comes once per request of the main loop,** with `index` from 0 at the start of the turn and `usage` with the four token
   counts. The split into five-minute and one-hour writes is only in the transcript. _Measured 2026-10-13, Claude Code 2.1.296._ The
   start of a step is when the cache was last read; the step with index 0 of a fresh session gives the baseline.
-- **At the end of the first turn of a fresh session the transcript can still lack the turn's answer.** The two answer entries of the first
-  request carried times 0.21 s and 0.08 s before the mod's log line of its read at the end of the turn, and the read found no write in the
-  file; the file holds both. _Measured 2026-10-17, Claude Code 2.1.302; one live session through herdr, read through `--debug-file`._ The
-  mod reads the transcript once more five seconds later, and again at the next turn, while it holds no answer.
+- **A request with a server tool inside it reports the sum of its passes.** With the advisor the request runs the executor, the advisor
+  and the executor again; the `usage` of its step is the sum of both executor passes, with no `iterations`, and `serverToolUses` lists the
+  call. `$.session.usage().context` counts the last pass only, as `usage.iterations` in the transcript shows. One call sums two passes,
+  two calls sum three. _Measured 2026-10-22, Claude Code 2.1.308; again 2026-10-23, 2.1.309; `claude -p --advisor` with a throwaway mod
+  on `turn.step`._ The mod tells a sum by the usage against the context after the step.
+- **While a step runs, `$.session.usage().context` is still the previous request's.** Before the first step of a session it has no
+  `tokens`, before each later one it holds the context of the step before, and only once `next(e)` has returned does it hold the new one.
+  _Measured 2026-10-23, Claude Code 2.1.309; a throwaway mod that read the context before and after `yield* next(e)`._
+- **At the end of a turn the transcript can still lack the turn's answer.** The two answer entries of the first request of a fresh session
+  carried times 0.21 s and 0.08 s before the mod's log line of its read at the end of the turn, and the read found no write in the file;
+  the file holds both. _Measured 2026-10-17, Claude Code 2.1.302; one live session through herdr, read through `--debug-file`._ A later
+  turn is no different: its answer was missing at the end of the step, at `classic.Stop` and at `turn.complete`, and was there five
+  seconds after the stop. _Measured 2026-10-23, Claude Code 2.1.309._ The mod reads the transcript once more five seconds later, and
+  again at the next turn, while it holds no answer.
 
 ## `$.session.compact`
 

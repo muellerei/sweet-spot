@@ -134,8 +134,9 @@ below 200,000 tokens the idle handoff works as before.
 - **Your status line.** Claude Code's own status line does not count the request that writes the handoff and shows the cache as expired
   an hour early.
 - **A self-check.** That writing the handoff keeps the cache another hour is measured, not promised. After a warm return the mod checks
-  the first request of the next turn; if it missed the cache, a `warn` line says so once, and for the rest of the session writing the
-  handoff no longer counts as a read: coming back is judged from your own last request again.
+  the first request of the next turn, and one with the advisor inside it by what its first pass read; if it missed the cache, or Claude
+  Code reports no context after it, a `warn` line says so once, and for the rest of the session writing the handoff no longer counts as a
+  read: coming back is judged from your own last request again.
 - **The same session open twice.** `claude --resume` on a session that is still open in another terminal writes to the same transcript. A
   compact in one of them is marked there for both, and the other one's pause ends with nothing written: that session then goes on as it
   would without the idle handoff. The mark cannot tell the two apart; it points at the last entry of the session that compacted, which is

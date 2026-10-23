@@ -62,7 +62,9 @@ the store, and `/sweet-spot redeliver` submits it, into the session the `/clear`
 transcript to read (`readPlan`), the cache lifetime and the baseline found in it, the lower bound (`floorOf`), whether to plan
 (`planVerdict`), when the step is due (`prepareDueAt`), whether to write when it comes (`fireVerdict`), and how a return is judged
 (`returnVerdict`). `register.tsx` reads the transcript at the end of the first turn of each session, and five seconds later and at each
-turn after it while the transcript held no answer yet (`readIdle`, `rereadIdle`), takes the touch and the baseline from `turn.step`, plans
+turn after it while the transcript held no answer yet (`readIdle`, `rereadIdle`), takes the touch and the baseline from `turn.step` (where
+the usage of a request sums several passes, as with the advisor, the baseline is the context after the step and the check after a warm
+return looks at what the first pass read: `completionsOf`, `baselineOf`, `firstReadOf`), plans
 at the pause after `atPause` (`planIdle`) and writes when the step comes (`prepareIdle`), through `prepare` in `relay.ts`: the user's
 command or the internal way, never a compact, and nothing delivered. While it writes, `preparing` in `state.ts` holds what `handingOver`
 holds (`underWay`). The first message after it takes the handoff at once (`claim` in `hold.ts`), and `comeBack` judges by the clock; a

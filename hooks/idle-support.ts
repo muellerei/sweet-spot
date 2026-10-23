@@ -10,6 +10,7 @@ import {
   startTurn,
   stop,
   withMod,
+  type SessionWorld,
   type TestEngine,
   type TestOn,
 } from './test-support'
@@ -39,10 +40,13 @@ export const FIVE_TRANSCRIPT = [entry(20_000, 0)].join('\n')
 // The first request of the session: 51003 tokens, so the lower bound is 81003.
 export const FIRST = { input_tokens: 3, output_tokens: 600, cache_read_input_tokens: 31_000, cache_creation_input_tokens: 20_000 }
 
-// What each request reads and writes, as its step reports it; a test sets another, or `null` for a request with no answer.
-export const answersSteps = (on: TestOn) => {
-  const requests: { usage: Record<string, number> | null } = { usage: FIRST }
+// What each request reads and writes, as its step reports it; a test sets another, or `null` for a request with no answer. Given the world
+// and with `contextAfter` set, the step moves the context to it while it runs (`undefined` for none reported), as the host does: before the
+// step the context is the previous one's.
+export const answersSteps = (on: TestOn, world?: SessionWorld) => {
+  const requests: { usage: Record<string, number> | null; contextAfter?: number | undefined } = { usage: FIRST }
   on('turn.step', async function* (_, e) {
+    if (world !== undefined && 'contextAfter' in requests) world.tokens = requests.contextAfter
     return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn', usage: requests.usage } as never
   })
   return requests
@@ -63,7 +67,7 @@ export const idleSession = (
   const seen = withMod(on, below)
   const w = sessionWith(on, { tokens: 120_000, ...world })
   const h = hostWith(on, { logLevel: 'debug', files: { [T]: HOUR_TRANSCRIPT }, modelFork: modelForkAnswer('goal: finish the parser'), ...host })
-  const requests = answersSteps(on)
+  const requests = answersSteps(on, w)
   return { seen, world: w, host: h, requests }
 }
 
