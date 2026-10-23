@@ -14,7 +14,7 @@ import {
   type TestEngine,
   type TestOn,
 } from './test-support'
-import { answersSteps } from './idle-support'
+import { answersSteps, step } from './idle-support'
 
 // What the handoff after a long pause needs to know of a session before it can plan: how long the prompt cache lives, read from the
 // transcript, and the baseline, what a fresh session of the project sends with its first message. Both are read at the end of the first
@@ -40,11 +40,6 @@ const entry = (fiveMinutes: number, oneHour: number, read = 40_000) =>
 
 const HOUR = [entry(0, 20_000, 31_000), entry(0, 900)].join('\n')
 const FIVE = [entry(20_000, 0), entry(400, 0)].join('\n')
-const step = async ($: TestEngine, turnId: string, index = 0, agentId?: string) => {
-  const s = $.turn.step({ turnId, index, model: 'claude', messageCount: 1, ...(agentId === undefined ? {} : { agentId }) })
-  for await (const _ of s);
-  return s.result
-}
 
 // A whole first turn of a session as the host raises it: the session starts, the turn makes one request, the stop comes before the end.
 const firstTurn = async ($: TestEngine, path = T, source: 'startup' | 'clear' | 'resume' = 'startup', turnId = 't1') => {

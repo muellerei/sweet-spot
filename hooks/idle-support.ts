@@ -52,8 +52,8 @@ export const answersSteps = (on: TestOn, world?: SessionWorld) => {
   return requests
 }
 
-export const step = async ($: TestEngine, turnId: string) => {
-  const s = $.turn.step({ turnId, index: 0, model: 'claude', messageCount: 1 })
+export const step = async ($: TestEngine, turnId: string, index = 0, agentId?: string) => {
+  const s = $.turn.step({ turnId, index, model: 'claude', messageCount: 1, ...(agentId === undefined ? {} : { agentId }) })
   for await (const _ of s);
 }
 
