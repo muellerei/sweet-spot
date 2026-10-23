@@ -4,6 +4,14 @@ All notable changes to sweet-spot are listed here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Fixed
+
+- With the advisor on, a fresh session whose first request called it stored a baseline about twice the real size, and the idle handoff was no longer planned in that project where it would have paid off. Claude Code reports a request with the advisor inside it as the sum of its passes. sweet-spot now tells a sum from the usage against the context Claude Code reports after the request, and keeps that context as the baseline; read back from the transcript of a resumed session, the baseline is that request's last pass ([#29](https://github.com/muellerei/sweet-spot/issues/29)).
+
+- After a warm return, a request with the advisor inside it was taken for a cache hit even when it missed the cache: its second pass reads what the first one just wrote, and together they read enough. sweet-spot then kept counting each handoff it wrote as a cache read, and a later return could count as warm while the cache was cold, so the handoff was dropped and the message stayed in the cold session. The check now looks at a lower bound of what the first pass read. If Claude Code reports no context after that request, the check now counts it as a miss and says so in a `warn` diagnostic line; before, it judged by the cache reads alone ([#29](https://github.com/muellerei/sweet-spot/issues/29)).
+
+- The request that writes the idle handoff was taken for a cache hit when it tried a tool and missed the cache. Claude Code refuses the tool and the request asks again, so its usage sums both and the second reads what the first wrote. The handoff then counted as a cache read, with the same result: a later return could count as warm while the cache was cold. The check now looks at a lower bound of what the first request read ([#29](https://github.com/muellerei/sweet-spot/issues/29)).
+
 ## [0.3.1] - 2026-10-20
 
 ### Fixed

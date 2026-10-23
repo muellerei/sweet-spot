@@ -69,13 +69,17 @@ export const lifetimeOf = (text: string): Lifetime | undefined => {
   return found
 }
 
-// The input of the first request of the main line: for a session resumed with no baseline kept for its project.
+// The input of the first request of the main line: for a session resumed with no baseline kept for its project. A request with the advisor
+// inside it lists its passes under `iterations`, and its usage is their sum; the last pass of the kinds the host counts as the context
+// (`message`, `fallback_message`) is the one kept live too, so both give the same size.
 export const firstBaselineOf = (text: string): number | undefined => {
   for (const usage of mainAnswers(text)) {
+    const passes = Array.isArray(usage.iterations) ? (usage.iterations as (Record<string, unknown> | null)[]) : []
+    const counted = passes.findLast(p => p?.type === 'message' || p?.type === 'fallback_message') ?? usage
     return baselineOfUsage({
-      input_tokens: count(usage.input_tokens),
-      cache_read_input_tokens: count(usage.cache_read_input_tokens),
-      cache_creation_input_tokens: count(usage.cache_creation_input_tokens),
+      input_tokens: count(counted.input_tokens),
+      cache_read_input_tokens: count(counted.cache_read_input_tokens),
+      cache_creation_input_tokens: count(counted.cache_creation_input_tokens),
     })
   }
   return undefined
@@ -129,8 +133,31 @@ export const fireVerdict = (s: FireSnapshot): { go: true } | { go: false; why: s
   return { go: true }
 }
 
-export const isHit = (usage: { cache_read_input_tokens: number } | undefined, tokens: number): boolean =>
-  usage !== undefined && usage.cache_read_input_tokens >= HIT_SHARE * tokens
+// How many completions a usage sums: one, unless a server tool (the advisor) ran inside the request, or a `$.model.fork` request tried a
+// tool, was refused and asked again. The host then reports the sum of all of them, and the context it reports after the request is the last
+// alone (measured on Claude Code 2.1.308 and 2.1.309: one advisor call sums two, two sum three). Rounded, not rounded up: a request that
+// writes the handoff carries its own prompt on top of the context and comes out a little above one without any sum. So a sum counts from
+// half a context more than one; a first completion smaller than half the last one would hide it, and the measured ones were over 99 percent.
+export const completionsOf = (u: InputUsage, context: number): number => Math.max(1, Math.round(baselineOfUsage(u) / context))
+
+const summed = (u: InputUsage, context: number | undefined): context is number => context !== undefined && context > 0 && completionsOf(u, context) > 1
+
+// The size a request had: the usage itself, or where it sums several completions, the context the host reports after it. That is the
+// last completion, larger than the first by what the passes between added (251 tokens measured with the advisor), which is on the safe side.
+export const baselineOf = (u: InputUsage, context: number | undefined): number => (summed(u, context) ? context : baselineOfUsage(u))
+
+// What the first completion of a request read from the cache, at least. The cache works by prefix and a request only grows the
+// conversation, so each later completion reads no more than the context of the one before it. Taking every later read off the summed reads
+// leaves at least the context less the summed fresh input and writes; what a pass added before the next one is written by that next one, so
+// it sits in both and cancels out. Measured 2 to 4 tokens under the true value, which only ever takes a hit for a miss. Without a sum the
+// read itself, which is exact: a request that writes the handoff carries its own prompt, and taking it off would read a hit as a miss.
+export const firstReadOf = (u: InputUsage, context: number | undefined): number =>
+  summed(u, context) ? Math.max(0, context - u.input_tokens - u.cache_creation_input_tokens) : u.cache_read_input_tokens
+
+// Whether a request found the cache warm: what it read against the share of `against`. `context` is the context the host reported after
+// it; without it, a summed usage cannot be told apart and counts as one request.
+export const isHit = (usage: InputUsage | undefined, against: number, context?: number): boolean =>
+  usage !== undefined && firstReadOf(usage, context) >= HIT_SHARE * against
 
 export type ReturnSnapshot = { now: number; touch: number; busy: boolean; attachments: boolean }
 

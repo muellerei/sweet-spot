@@ -69,8 +69,9 @@ export const firstMessage = (handoff: string, still?: Still): string =>
     ...section(FORCED, still?.forced ?? []),
   ].join('\n\n')
 
-// The prompt the internal handoff asks the model when the user has none of their own. The `$.model.fork` call sees the whole history and has no tools, so it only has to say
-// what the next session needs; the length is a guide, and a prompt file of the user's can set another.
+// The prompt the internal handoff asks the model when the user has none of their own. The `$.model.fork` call sees the whole history, and a
+// tool it tries is refused (docs/host-behaviour.md), so it only has to say what the next session needs; the length is a guide, and a prompt
+// file of the user's can set another.
 export const DEFAULT_PROMPT = [
   'Write a handoff for the session that takes over this work. It starts with no memory of this conversation and must be able to carry on from your text alone.',
   MID_TASK,

@@ -460,6 +460,35 @@ modTest('a handoff written from a cache it missed leaves the touch where it was'
   expect(idleLines(seen.logs)).toContain('debug: idle: the handoff missed the cache, the touch stays')
 })
 
+// The request that writes the handoff can try a tool; Claude Code refuses it and the request asks again, so its usage sums both completions,
+// and the second reads what the first wrote (measured on Claude Code 2.1.309). The context when writing is 87090.
+const triedTool = (usage: { input_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }) => ({
+  isAnswered: true,
+  text: 'goal: finish the parser',
+  usage: { ...usage, output_tokens: 900 },
+})
+
+modTest(
+  'a handoff that tried a tool and missed the cache leaves the touch where it was, though both its requests together read enough',
+  LIVE_IDLE,
+  async ($, on) => {
+    const missed = triedTool({ input_tokens: 99, cache_read_input_tokens: 88_090, cache_creation_input_tokens: 86_200 })
+    const { seen, world } = idleSession(on, { modelFork: missed }, { tokens: 87_090 })
+    await answer($)
+    await world.clock.advance(55 * MINUTE)
+    expect(idleLines(seen.logs)).toContain('debug: idle: the handoff missed the cache, the touch stays')
+  },
+)
+
+modTest('a handoff that tried a tool and read the cache moves the touch as any other', LIVE_IDLE, async ($, on) => {
+  const read = triedTool({ input_tokens: 99, cache_read_input_tokens: 174_154, cache_creation_input_tokens: 136 })
+  const { seen, world } = idleSession(on, { modelFork: read }, { tokens: 87_090 })
+  await answer($)
+  await world.clock.advance(55 * MINUTE)
+  expect(idleLines(seen.logs).some(l => l.startsWith('info: idle: handoff prepared'))).toBe(true)
+  expect(idleLines(seen.logs)).not.toContain('debug: idle: the handoff missed the cache, the touch stays')
+})
+
 modTest('a turn that starts and ends without an answer (Esc) ends the pause and plans nothing new', LIVE_IDLE, async ($, on) => {
   const { world, host } = idleSession(on)
   await answer($)

@@ -1,7 +1,7 @@
 import { expect } from 'claude-code/testing'
 
-import { LIVE_IDLE, T, answer, idleLines, idleSession } from './idle-support'
-import { MINUTE, answered, modTest, runRelay, submits, typeInto, type TestEngine } from './test-support'
+import { LIVE_IDLE, T, answer, idleLines, idleSession, step } from './idle-support'
+import { MINUTE, answered, endTurn, modTest, runRelay, startTurn, stop, submits, typeInto, type TestEngine } from './test-support'
 
 // Coming back after a long pause with the handoff written: with the cache expired the message goes into a fresh session with the handoff in
 // front of it; with the cache still warm, with work running or with an attachment it stays in this session, and the handoff written goes.
@@ -328,4 +328,115 @@ modTest('the doubt is said once in the session', LIVE_IDLE, async ($, on) => {
   expect(await typeInto($, 'and now')).toEqual({ text: 'and now' })
   await answer($, 't3', {}, false)
   expect(seen.logs.filter(l => l === DOUBTED)).toHaveLength(1)
+})
+
+// A request with the advisor inside it reports the sum of its two executor passes, and the context the host reports after its step is the
+// last pass alone (measured on Claude Code 2.1.308 and 2.1.309). The context at the return is what the check measures against.
+const NO_CONTEXT = 'warn: idle: the host reports no context for the request after a warm return, the handoff written no longer counts as reading it'
+// One advisor call whose first pass read only 56473 of 87361 tokens from the cache; context after it 87569.
+const ADVISOR_PARTIAL_MISS = { input_tokens: 4, output_tokens: 600, cache_read_input_tokens: 143_832, cache_creation_input_tokens: 31_094 }
+// One advisor call that read the cache; context after it 87627.
+const ADVISOR_HIT = { input_tokens: 4, output_tokens: 600, cache_read_input_tokens: 174_353, cache_creation_input_tokens: 513 }
+
+// A warm return like `warmReturn`, with no context reported right after its request's step; the pause after the turn is planned from the
+// context as before.
+const warmReturnWithoutContext = async (
+  $: TestEngine,
+  world: ReturnType<typeof idleSession>['world'],
+  requests: ReturnType<typeof idleSession>['requests'],
+  turnId: string,
+) => {
+  await world.clock.advance(30 * MINUTE)
+  await typeInto($, BACK)
+  await startTurn($, turnId)
+  requests.contextAfter = undefined
+  await step($, turnId)
+  delete requests.contextAfter
+  world.tokens = 120_000
+  await stop($, { transcript_path: T } as never)
+  await endTurn($, 'answer', { turnId })
+}
+
+// In the order the host raises them: the handoff written, then the context at the return set, then the return typed, then its request.
+modTest(
+  'a request with the advisor inside it after a warm return that missed the cache is a miss, though its passes together read enough',
+  LIVE_IDLE,
+  async ($, on) => {
+    const { seen, world, requests } = idleSession(on)
+    await prepared($, world)
+    world.tokens = 87_257
+    requests.usage = ADVISOR_PARTIAL_MISS
+    requests.contextAfter = 87_569
+    await warmReturn($, world, 't2')
+    expect(seen.logs.filter(l => l === DOUBTED)).toHaveLength(1)
+  },
+)
+
+modTest('a request with the advisor inside it after a warm return that read the cache leaves things as they are', LIVE_IDLE, async ($, on) => {
+  const { seen, world, requests } = idleSession(on)
+  await prepared($, world)
+  world.tokens = 87_139
+  requests.usage = ADVISOR_HIT
+  requests.contextAfter = 87_627
+  await warmReturn($, world, 't2')
+  expect(seen.logs).not.toContain(DOUBTED)
+})
+
+// Before the step the host still reports the previous request's context; read there, the sum of 174870 against 1000 would make the first
+// pass's share 483 of a threshold of 800.
+modTest('the check takes the context reported after the request, not the one before it', LIVE_IDLE, async ($, on) => {
+  const { seen, world, requests } = idleSession(on)
+  await prepared($, world)
+  world.tokens = 1_000
+  requests.usage = ADVISOR_HIT
+  requests.contextAfter = 87_627
+  await warmReturn($, world, 't2')
+  expect(seen.logs).not.toContain(DOUBTED)
+})
+
+// Not judging would leave a miss unseen, the way that keeps a cold cache for a warm one. Live the host always reported a context after a step.
+modTest('a request after a warm return with no context reported after it counts as a miss, said in a line of its own', LIVE_IDLE, async ($, on) => {
+  const { seen, world, host, requests } = idleSession(on)
+  await prepared($, world)
+  requests.usage = HIT
+  await warmReturnWithoutContext($, world, requests, 't2')
+  expect(seen.logs.filter(l => l === NO_CONTEXT)).toHaveLength(1)
+  expect(seen.logs).not.toContain(DOUBTED)
+  await world.clock.advance(61 * MINUTE)
+  await typeInto($, 'and now')
+  await world.clock.settle()
+  expect(host.steps).toContain('run clear')
+})
+
+// The return reads the context when it is typed; a read that fails there ends the return with no check, so the read fails only after it.
+modTest('a request after a warm return whose context cannot be read counts as a miss, and the step reads it once', LIVE_IDLE, async ($, on) => {
+  const { seen, world, requests } = idleSession(on)
+  await prepared($, world)
+  requests.usage = HIT
+  await world.clock.advance(30 * MINUTE)
+  await typeInto($, BACK)
+  await startTurn($, 't2')
+  world.usageError = 'no session'
+  const before = world.reads.length
+  await step($, 't2')
+  expect(world.reads.slice(before)).toEqual(['usage'])
+  world.usageError = undefined
+  await stop($, { transcript_path: T } as never)
+  await endTurn($, 'answer', { turnId: 't2' })
+  expect(seen.logs.filter(l => l === NO_CONTEXT)).toHaveLength(1)
+  expect(seen.logs).toContain('debug: idle: the context after the request could not be read')
+})
+
+modTest('the doubt is said once in the session, whether a missing context or a miss said it first', LIVE_IDLE, async ($, on) => {
+  const { seen, world, requests } = idleSession(on)
+  await prepared($, world)
+  requests.usage = HIT
+  await warmReturnWithoutContext($, world, requests, 't2')
+  // Written at minute 140; back at 141: warm again, and missed again.
+  await world.clock.advance(56 * MINUTE)
+  expect(await typeInto($, 'and now')).toEqual({ text: 'and now' })
+  requests.usage = MISS
+  await answer($, 't3', {}, false)
+  expect(seen.logs.filter(l => l === NO_CONTEXT)).toHaveLength(1)
+  expect(seen.logs).not.toContain(DOUBTED)
 })

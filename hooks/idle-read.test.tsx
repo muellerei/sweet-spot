@@ -14,6 +14,7 @@ import {
   type TestEngine,
   type TestOn,
 } from './test-support'
+import { answersSteps } from './idle-support'
 
 // What the handoff after a long pause needs to know of a session before it can plan: how long the prompt cache lives, read from the
 // transcript, and the baseline, what a fresh session of the project sends with its first message. Both are read at the end of the first
@@ -39,17 +40,6 @@ const entry = (fiveMinutes: number, oneHour: number, read = 40_000) =>
 
 const HOUR = [entry(0, 20_000, 31_000), entry(0, 900)].join('\n')
 const FIVE = [entry(20_000, 0), entry(400, 0)].join('\n')
-const FIRST = { input_tokens: 3, output_tokens: 600, cache_read_input_tokens: 31_000, cache_creation_input_tokens: 20_000 }
-
-// The answer of each model request, as the turn's steps report it; `null` for one with no answer.
-const answersSteps = (on: TestOn) => {
-  const usage: { next: Record<string, number> | null } = { next: FIRST }
-  on('turn.step', async function* (_, e) {
-    return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn', usage: usage.next } as never
-  })
-  return usage
-}
-
 const step = async ($: TestEngine, turnId: string, index = 0, agentId?: string) => {
   const s = $.turn.step({ turnId, index, model: 'claude', messageCount: 1, ...(agentId === undefined ? {} : { agentId }) })
   for await (const _ of s);
@@ -85,6 +75,54 @@ modTest('a fresh session knows the cache lifetime from its transcript and keeps 
   expect(idleLines(seen.logs)).toContain('debug: idle: cache lifetime 1h, baseline 51003 tokens')
   expect((host.store.get('idle-baseline:/work') as { tokens: number }).tokens).toBe(51_003)
   expect(host.runs).toEqual([])
+})
+
+// The first request of a fresh session with one advisor call (measured on Claude Code 2.1.308): its step reports the sum of both executor
+// passes, 134363 tokens; the context the host reports after the step is the last pass alone, 67307.
+const ADVISOR_FIRST = { input_tokens: 4, output_tokens: 900, cache_read_input_tokens: 84_716, cache_creation_input_tokens: 49_643 }
+
+modTest('a first request with the advisor inside it keeps the context after it as the baseline, not the sum of its passes', async ($, on) => {
+  withMod(on)
+  const world = sessionWith(on, { tokens: 60_000 })
+  const host = hostWith(on, { files: { [T]: HOUR } })
+  const requests = answersSteps(on, world)
+  requests.usage = ADVISOR_FIRST
+  requests.contextAfter = 67_307
+  await firstTurn($)
+  expect((host.store.get('idle-baseline:/work') as { tokens: number }).tokens).toBe(67_307)
+})
+
+// Before the first step of a session the host reports no context at all; the one after the request comes only once the step is through.
+modTest('the baseline takes the context reported after the first request, not the one before it', async ($, on) => {
+  withMod(on)
+  const world = sessionWith(on, { tokens: undefined })
+  const host = hostWith(on, { files: { [T]: HOUR } })
+  const requests = answersSteps(on, world)
+  requests.usage = ADVISOR_FIRST
+  requests.contextAfter = 67_307
+  await firstTurn($)
+  expect((host.store.get('idle-baseline:/work') as { tokens: number }).tokens).toBe(67_307)
+})
+
+// A read at every request would be a round trip each: the step asks for the context only where the baseline or a check is due.
+modTest('the step reads the context once where the baseline is due, and not at the steps after it', async ($, on) => {
+  withMod(on)
+  const world = sessionWith(on, { tokens: 60_000 })
+  hostWith(on, { files: { [T]: HOUR } })
+  answersSteps(on, world)
+  await startSession($)
+  await $.classic.SessionStart({ source: 'startup', transcript_path: T })
+  await startTurn($, 't1')
+  const before = world.reads.length
+  await step($, 't1')
+  expect(world.reads.slice(before)).toEqual(['usage'])
+  await stop($, { transcript_path: T } as never)
+  await endTurn($, 'answer', { turnId: 't1' })
+  await startTurn($, 't2')
+  const later = world.reads.length
+  await step($, 't2')
+  await step($, 't2', 1)
+  expect(world.reads.slice(later)).toEqual([])
 })
 
 modTest('a transcript above 4 MiB is read at its end only, through tail, and no other process runs', async ($, on) => {
@@ -166,7 +204,7 @@ modTest("the fresh session a handoff of the mod began does not change the projec
   withMod(on)
   const world = sessionWith(on, { tokens: 60_000 })
   const host = hostWith(on, { commands: [], modelFork: modelForkAnswer('notes'), files: { [T]: HOUR, [T2]: HOUR } })
-  const usage = answersSteps(on)
+  const requests = answersSteps(on)
   await startSession($)
   await $.classic.SessionStart({ source: 'startup', transcript_path: T })
   await startTurn($, 't0')
@@ -178,7 +216,7 @@ modTest("the fresh session a handoff of the mod began does not change the projec
   await reachThreshold($, world)
   expect(host.sessionId).toBe('new')
   // The handoff is the first message of the fresh session: its request is large, and is not what the project starts with.
-  usage.next = { input_tokens: 3, output_tokens: 600, cache_read_input_tokens: 31_000, cache_creation_input_tokens: 60_000 }
+  requests.usage = { input_tokens: 3, output_tokens: 600, cache_read_input_tokens: 31_000, cache_creation_input_tokens: 60_000 }
   await firstTurn($, T2, 'clear', 't9')
   expect((host.store.get('idle-baseline:/work') as { tokens: number }).tokens).toBe(51_003)
 })
@@ -209,12 +247,12 @@ modTest("a subagent's request and a request with no answer keep no baseline", as
   withMod(on)
   sessionWith(on, { tokens: 60_000 })
   const host = hostWith(on, { logLevel: 'debug', files: { [T]: HOUR } })
-  const usage = answersSteps(on)
+  const requests = answersSteps(on)
   await startSession($)
   await $.classic.SessionStart({ source: 'startup', transcript_path: T })
   await startTurn($, 't1')
   await step($, 't1', 0, 'agent-1')
-  usage.next = null
+  requests.usage = null
   await step($, 't1', 0)
   await stop($, { transcript_path: T } as never)
   await endTurn($, 'answer', { turnId: 't1' })
