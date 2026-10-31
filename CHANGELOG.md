@@ -4,6 +4,8 @@ All notable changes to sweet-spot are listed here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-31
+
 ### Added
 
 - The fresh session's first message now carries your last request and Claude's final answer to it word for word, after the handoff. Before, only the handoff retold the end of the conversation, and you often had to ask again or paste the answer back in. The new setting `last_exchanges` says how many go along: 0 to 5, 1 by default, 0 for none. Only requests you typed count, a text over 4,000 characters keeps its first and last 1,750, and nothing in them is redacted, although the prompt asks the handoff to leave secrets out. With `builtin-compact` nothing is added. The exchanges live in memory only, so after a reload or `/resume` the earlier ones are not known ([#34](https://github.com/muellerei/sweet-spot/issues/34)).
