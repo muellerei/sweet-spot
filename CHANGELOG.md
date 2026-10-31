@@ -4,6 +4,14 @@ All notable changes to sweet-spot are listed here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+
+- An icon for the plugin directory, `.claude-plugin/icon.png`: the scale from the README's sweet-spot picture, without its words. Without one, `claude plugin validate --profile directory --strict` fails.
+
+### Changed
+
+- The description in `plugin.json` and `marketplace.json` now says what sets the mod apart, the same as on GitHub: "Waits for a safe pause, then hands your session over or compacts it." The two had drifted apart, and `docs/src/check.py` now fails when they differ.
+
 ## [0.3.2] - 2026-10-23
 
 ### Fixed
