@@ -31,18 +31,21 @@ mod has not been measured.
 
 ## Checks
 
-The CI runs these, in this order, on every push and pull request and once a week (`.github/workflows/check.yml`). Run them from the root
-of a clean clone: `claude plugin test .` also picks up tests in untracked folders.
+The CI runs `docs/src/checks.sh` on every push and pull request and once a week, once for each Claude Code version in the matrix of
+`.github/workflows/check.yml`. The script lists the checks in their order. To run all of them here, against every version in the matrix,
+before you push:
 
 ```bash
-claude plugin validate . --strict
-claude plugin test .
-CLAUDE_CODE_PLUGIN_DIR_WATCH=1 claude --plugin-dir . -p ok   # lays down the types tsc needs
-npx -p typescript@5 tsc -p .
-npx prettier@3 --check hooks docs
-python3 docs/src/check.py
-sh docs/src/build.sh && git diff --exit-code -- docs
+sh docs/src/ci-local.sh            # every version in the matrix
+sh docs/src/ci-local.sh 2.1.296    # only this one
 ```
+
+It checks the working tree as it is, files not yet committed included, and needs `npm`, `rsync` and `git`. Each version gets its own
+install and its own copy of the tree, with an empty config folder as in the CI: no sign-in, none of your plugins, and no model is called.
+A check can pass against the Claude Code you use and fail against another version, whose types lack a field the code reads.
+
+`sh docs/src/checks.sh` runs the checks once, against the `claude` on your PATH. Run it from the root of a clean clone: `claude plugin
+test .` also picks up tests in untracked folders.
 
 `check.py` compares the numbers and versions written in more than one place, compares the choices and defaults of `handoff_method` and
 `handoff_fallback` in `plugin.json` with `METHODS` and `DEFAULTS` in `config.ts`, and the default and span of `countdown_seconds` with `DEFAULTS` and
