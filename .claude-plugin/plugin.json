@@ -1,7 +1,7 @@
 {
   "name": "sweet-spot",
   "version": "0.3.2",
-  "description": "Hands a long session over, to a fresh one or by compacting, before the context gets too big",
+  "description": "Waits for a safe pause, then hands your session over or compacts it.",
   "author": {
     "name": "Patrick Müller",
     "url": "https://github.com/muellerei"

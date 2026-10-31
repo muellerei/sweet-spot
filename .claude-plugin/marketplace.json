@@ -6,7 +6,7 @@
     {
       "name": "sweet-spot",
       "source": "./",
-      "description": "Hands a long session over to a fresh one before the context gets too big."
+      "description": "Waits for a safe pause, then hands your session over or compacts it."
     }
   ]
 }
