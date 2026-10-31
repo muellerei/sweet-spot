@@ -124,7 +124,7 @@ const MODEL_FORK_ANSWER = modelForkAnswer('goal: finish')
 const PAUSE =
   'info: pause: context 210000 of 1000000 tokens (threshold 200000, brake 350000), 0 background tasks (0 standing), 0 timers, 0 subagents, turn 10, no attempt before, decided act'
 const SETTINGS =
-  'settings: threshold 200000, dry_run off, min gap 10 minutes and 5 turns, later_tokens 25000, countdown_seconds 0, idle_handoff on, idle_handoff_min_tokens 0, method external-command, fallback internal-handoff, handoff command "handoff"'
+  'settings: threshold 200000, dry_run off, min gap 10 minutes and 5 turns, later_tokens 25000, countdown_seconds 0, last_exchanges 1, idle_handoff on, idle_handoff_min_tokens 0, method external-command, fallback internal-handoff, handoff command "handoff"'
 const lines = (logs: string[]) => logs.filter(l => !l.startsWith('info: settings:'))
 const diagnostic = (logs: string[]) => logs.filter(l => /^(warn|info|debug|trace): /.test(l))
 
@@ -298,6 +298,7 @@ modTest('the handoff is logged step by step', LIVE, async ($, on) => {
   await commandTurnEnds($, world, `All written.\nHANDOFF_PATH: ${FILE}`)
   const message = firstMessage(NOTES)
   expect(lines(seen.logs).slice(8)).toEqual([
+    'debug: last exchanges: 0 of 1, 0 shortened',
     'info: handoff starts, method external-command',
     'debug: command "handoff" is listed',
     'debug: command started, waiting for its turn',

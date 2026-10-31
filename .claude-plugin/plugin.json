@@ -67,6 +67,14 @@
       "min": 0,
       "max": 60
     },
+    "last_exchanges": {
+      "type": "number",
+      "title": "Last exchanges to carry over",
+      "description": "How many of your last requests, each with Claude's final answer to it, go word for word into the fresh session's first message, after the handoff. Long texts are shortened, and nothing is redacted. 0: none. Not with builtin-compact: Claude Code's own /compact keeps the end of the conversation itself. A whole number from 0 to 5.",
+      "default": 1,
+      "min": 0,
+      "max": 5
+    },
     "handoff_method": {
       "type": "string",
       "title": "Handoff method",

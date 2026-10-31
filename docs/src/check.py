@@ -117,18 +117,19 @@ else:
         if not default or user_config.get(key, {}).get('default') != default.group(1):
             problems.append(f'plugin.json: {key} has default {user_config.get(key, {}).get("default")!r}, DEFAULTS in hooks/config.ts has {default.group(1) if default else None!r}')
 
-# The default and the span of countdown_seconds are written in config.ts (DEFAULTS and COUNTDOWN_SECONDS) and in plugin.json, the default
-# also in the README's settings table.
-span = re.search(r'export const COUNTDOWN_SECONDS = \{ min: (\d+), max: (\d+) \} as const', config_ts)
-default = re.search(r'countdownSeconds: (\d+)', defaults.group(1)) if defaults else None
-if not span or not default:
-    problems.append('hooks/config.ts: no COUNTDOWN_SECONDS or no default of countdownSeconds found, the pattern no longer matches the code')
-else:
-    entry = json.loads(read('.claude-plugin', 'plugin.json')).get('userConfig', {}).get('countdown_seconds', {})
+# The default and the span of countdown_seconds and last_exchanges are written in config.ts (DEFAULTS and the span's constant) and in
+# plugin.json, the default also in the README's settings table.
+for key, camel, const in (('countdown_seconds', 'countdownSeconds', 'COUNTDOWN_SECONDS'), ('last_exchanges', 'lastExchanges', 'LAST_EXCHANGES')):
+    span = re.search(r'export const ' + const + r' = \{ min: (\d+), max: (\d+) \} as const', config_ts)
+    default = re.search(camel + r': (\d+)', defaults.group(1)) if defaults else None
+    if not span or not default:
+        problems.append(f'hooks/config.ts: no {const} or no default of {camel} found, the pattern no longer matches the code')
+        continue
+    entry = json.loads(read('.claude-plugin', 'plugin.json')).get('userConfig', {}).get(key, {})
     for field, wanted in (('default', default.group(1)), ('min', span.group(1)), ('max', span.group(2))):
         if str(entry.get(field)) != wanted:
-            problems.append(f'plugin.json: countdown_seconds has {field} {entry.get(field)!r}, hooks/config.ts has {wanted}')
-    expect(re.findall(r'\| `countdown_seconds`\s*\| `(\d+)`', readme), default.group(1), 'README settings table, countdown_seconds default')
+            problems.append(f'plugin.json: {key} has {field} {entry.get(field)!r}, hooks/config.ts has {wanted}')
+    expect(re.findall(r'\| `' + key + r'`\s*\| `(\d+)`', readme), default.group(1), f'README settings table, {key} default')
 
 # The README and plugin.json are for people who use the mod: the host's word for the call that writes the handoff is not theirs.
 for path in (('README.md',), ('.claude-plugin', 'plugin.json')):

@@ -62,9 +62,12 @@ const taskLine = (t: TaskSummary) => `- ${t.type === 'shell' && t.command !== un
 
 const section = (title: string, tasks: readonly TaskSummary[]) => (tasks.length === 0 ? [] : [[title, ...tasks.map(taskLine)].join('\n')])
 
-export const firstMessage = (handoff: string, still?: Still): string =>
+// The last exchanges come after the handoff and before what still runs, which is the present and no history; what was typed meanwhile is
+// added at the very end (`withHeld`), so that only it reads as the task at hand.
+export const firstMessage = (handoff: string, still?: Still, exchanges = ''): string =>
   [
     `Handoff from the previous session. Read it and carry on with the next step.\n\n${handoff}`,
+    ...(exchanges === '' ? [] : [exchanges]),
     ...section(STANDING, still?.standing ?? []),
     ...section(FORCED, still?.forced ?? []),
   ].join('\n\n')

@@ -2,6 +2,7 @@
 // hot reload) starts from nothing, and what must survive a reload does not belong here.
 
 import type { CompactCheck } from './compact-check'
+import { freshRecorded, type Recorded } from './exchanges'
 import type { Countdown } from './countdown'
 import type { Asap, Attempt, Later } from './decide'
 import type { Still } from './handoff'
@@ -79,6 +80,11 @@ export type State = LevelMemo & {
   // What still runs, fixed where the handover is decided and read where its first message is written: in between the list in `lastStop` can
   // go (a turn starts) or change (the command's own turn). Set only while that first message is written.
   still: Still | undefined
+  // The user's last exchanges as recorded so far (exchanges.ts), and the attachment made from them when a handover or the idle handoff's
+  // writing begins, read where its first message is written, like `still`. Made there and not later: the user's command adds a turn of
+  // its own, which must not get in.
+  recorded: Recorded
+  attachment: string
   // Whether the last compact was enough, found out at the first tool call or pause after it (`compact-check.ts`). Not kept across a reload, like the rest: at worst
   // one compact more follows.
   compactCheck: CompactCheck
@@ -167,6 +173,8 @@ export const freshState = (): State => ({
   answerRunning: false,
   afterHandoff: undefined,
   still: undefined,
+  recorded: freshRecorded(),
+  attachment: '',
   compactCheck: undefined,
   countdown: undefined,
   deferred: undefined,
