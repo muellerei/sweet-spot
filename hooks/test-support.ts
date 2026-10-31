@@ -201,6 +201,8 @@ export type Host = {
   // answered with a drop for; whether the submit rejects.
   failRun: string[]
   dropSubmit: string | undefined
+  // How a hook beneath rewrites what is submitted (one that masks secrets); the submit then answers with the rewritten text.
+  rewriteSubmit: ((text: string) => string) | undefined
   rejectSubmit: boolean
   // The submits after this many are rejected: the first message gets through and what follows does not.
   rejectSubmitAfter: number
@@ -256,6 +258,7 @@ export const hostWith = (on: TestOn, host: Partial<Host> = {}) => {
     home: '/home/me',
     failRun: [],
     dropSubmit: undefined,
+    rewriteSubmit: undefined,
     rejectSubmit: false,
     rejectSubmitAfter: Infinity,
     envError: undefined,
@@ -357,7 +360,7 @@ export const hostWith = (on: TestOn, host: Partial<Host> = {}) => {
     h.steps.push(`submit ${e.text}`)
     await once(h, 'submit')
     if (h.rejectSubmit || h.steps.filter(s => s.startsWith('submit ')).length > h.rejectSubmitAfter) throw new Error('refused')
-    return h.dropSubmit === undefined ? { text: e.text } : { drop: h.dropSubmit }
+    return h.dropSubmit === undefined ? { text: h.rewriteSubmit?.(e.text) ?? e.text } : { drop: h.dropSubmit }
   })
   return h
 }

@@ -2,6 +2,7 @@
 // session that is about to be cleared. These lines carry the name themselves: the host puts it only in
 // front of log lines and command replies.
 
+import { USER_ORIGINS } from './exchanges'
 import { underWay, type IdlePrepared, type State } from './state'
 
 export const HELD = 'sweet-spot: a handover is in progress, your message is held and goes in when it is done'
@@ -14,7 +15,7 @@ export const NO_ATTACHMENTS_MOMENT = 'sweet-spot: attachments cannot be held, se
 type Typing = { text: string; attachments?: readonly unknown[]; origin: { kind: string } }
 
 // Typed at the prompt by a person, and no slash command.
-const byPerson = (input: Typing): boolean => (input.origin.kind === 'composer' || input.origin.kind === 'bridge') && !input.text.trimStart().startsWith('/')
+const byPerson = (input: Typing): boolean => USER_ORIGINS.includes(input.origin.kind) && !input.text.trimStart().startsWith('/')
 
 // The reason to drop the input with, when it is held; `undefined` lets it through. Only what a person types at the prompt is held: a slash
 // command still runs, and what other parts of the system send is theirs.

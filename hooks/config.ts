@@ -15,6 +15,8 @@ export type Config = {
   laterTokens: number
   // How long the mod waits before an automatic handover, in seconds. 0: no wait.
   countdownSeconds: number
+  // How many of the user's last requests, each with Claude's final answer, go word for word into the fresh session's first message. 0: none.
+  lastExchanges: number
   // The main way, and the one tried when it fails before it changed the session. 'none': no second try.
   handoffMethod: Method
   handoffFallback: Method | 'none'
@@ -35,6 +37,7 @@ export const DEFAULTS: Config = {
   minGapTurns: 5,
   laterTokens: 25_000,
   countdownSeconds: 10,
+  lastExchanges: 1,
   handoffMethod: 'internal-handoff',
   handoffFallback: 'builtin-compact',
   handoffCommand: '',
@@ -49,6 +52,10 @@ const MIN_THRESHOLD = 130_000
 // The span of `countdown_seconds`, the same as `min` and `max` in plugin.json; `docs/src/check.py` compares the two. The test engine refuses a
 // value above `max` before the mod loads, but lets a fraction through; whether a real load checks `max` is not measured.
 export const COUNTDOWN_SECONDS = { min: 0, max: 60 } as const
+
+// The span of `last_exchanges`, compared with plugin.json in the same way. Five shortened exchanges stay near 36,000 characters, so the whole
+// attachment needs no limit of its own (exchanges.ts).
+export const LAST_EXCHANGES = { min: 0, max: 5 } as const
 
 // `JSON.stringify` writes NaN and Infinity as null.
 const show = (raw: unknown): string => (typeof raw === 'number' ? String(raw) : (JSON.stringify(raw) ?? String(raw)))
@@ -104,6 +111,7 @@ export const configOf = (options: Record<string, unknown>): ConfigResult => {
     countdownSeconds: take('countdown_seconds', DEFAULTS.countdownSeconds, raw =>
       finiteAtLeast(raw, COUNTDOWN_SECONDS.min, true, { max: COUNTDOWN_SECONDS.max }),
     ),
+    lastExchanges: take('last_exchanges', DEFAULTS.lastExchanges, raw => finiteAtLeast(raw, LAST_EXCHANGES.min, true, { max: LAST_EXCHANGES.max })),
     handoffMethod: take('handoff_method', DEFAULTS.handoffMethod, oneOf(METHODS)),
     handoffFallback: take('handoff_fallback', DEFAULTS.handoffFallback, oneOf([...METHODS, 'none'] as const)),
     handoffCommand: take('handoff_command', DEFAULTS.handoffCommand, commandName),

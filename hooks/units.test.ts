@@ -20,6 +20,7 @@ test('configOf: nothing set gives the defaults, and the defaults are these', asy
     minGapTurns: 5,
     laterTokens: 25_000,
     countdownSeconds: 10,
+    lastExchanges: 1,
     handoffMethod: 'internal-handoff',
     handoffFallback: 'builtin-compact',
     handoffCommand: '',
@@ -38,6 +39,7 @@ test('configOf: valid values are taken as they are', async () => {
     min_gap_turns: 0,
     later_tokens: 1,
     countdown_seconds: 0,
+    last_exchanges: 0,
     handoff_command: 'claude-mem:handoff',
     idle_handoff: false,
     idle_handoff_min_tokens: 90_000,
@@ -51,6 +53,7 @@ test('configOf: valid values are taken as they are', async () => {
       minGapTurns: 0,
       laterTokens: 1,
       countdownSeconds: 0,
+      lastExchanges: 0,
       handoffMethod: 'internal-handoff',
       handoffFallback: 'builtin-compact',
       handoffCommand: 'claude-mem:handoff',
@@ -106,6 +109,14 @@ test('configOf: later_tokens is a whole number of tokens, 1 or more', async () =
   expect(rejected({ later_tokens: 2.5 })).toEqual(['later_tokens: 2.5 is not a whole number'])
   expect(rejected({ later_tokens: Number.POSITIVE_INFINITY })).toEqual(['later_tokens: Infinity is not a finite number'])
   expect(configOf({ later_tokens: 50_000 })).toMatchObject({ ok: true, config: { laterTokens: 50_000 } })
+})
+
+test('configOf: last_exchanges is a whole number from 0 to 5', async () => {
+  expect(rejected({ last_exchanges: -1 })).toEqual(['last_exchanges: -1 is below 0'])
+  expect(rejected({ last_exchanges: 6 })).toEqual(['last_exchanges: 6 is above 5'])
+  expect(rejected({ last_exchanges: 1.5 })).toEqual(['last_exchanges: 1.5 is not a whole number'])
+  expect(rejected({ last_exchanges: '1' })).toEqual(['last_exchanges: "1" is not a number'])
+  for (const n of [0, 5]) expect([n, configOf({ last_exchanges: n })]).toMatchObject([n, { ok: true, config: { lastExchanges: n } }])
 })
 
 test('configOf: countdown_seconds is a whole number of seconds from 0 to 60', async () => {

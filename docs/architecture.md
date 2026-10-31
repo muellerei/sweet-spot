@@ -17,6 +17,9 @@ watcher), `waiting` in `decide.ts` counts the running tasks that are not standin
 The stop's task list is kept as it came (`lastStop` in `state.ts`), and every count is derived from it where it is read. The standing tasks
 are named in the first message of the fresh session (`firstMessage` in `handoff.ts`) from the list fixed when the handover was decided
 (`state.still`), and in the countdown by the words their rule hit (`standingPart`).
+The user's last exchanges are recorded as the session goes, from `prompt.submit`, `turn.start` and `turn.complete` (`exchanges.ts`, `record`
+in `register.tsx`), the end of a turn before it is judged. The attachment made from them where a handover or the idle handoff's writing
+begins (`carryExchanges`, `state.attachment`) follows the handoff in the first message; the user's command adds its turn after that.
 `/sweet-spot later` moves the next handover back: `later.ts` makes the answer and the value from the context the command reads, and
 `decide` then judges at `thresholdInForce` instead of the threshold, until that handover is spent or the context shrinks (`laterAt`).
 `/sweet-spot asap` sets a mark (`Asap` in `decide.ts`, `asapFor` in `asap.ts`): with it `decide` skips the threshold and the minimum gap, and

@@ -18,6 +18,7 @@ import {
   type Snapshot,
 } from './decide'
 import { claim, hold, HELD_MOMENT } from './hold'
+import { attachment, byUser, ended as turnEnded, inSession, ofMainLoop, requestOf, restarted, started, submitted, type Recorded } from './exchanges'
 import { LATER_OVER, laterFor, tokensOf } from './later'
 import { idlePart, statusFor, statusTail } from './status'
 import { checkOf, firstMethod, judgedLine } from './compact-check'
@@ -116,7 +117,7 @@ const readLevel = async ($: Engine, settings: ConfigResult, state: State) => {
   const c = settings.config
   logTo($, state)(
     'info',
-    `settings: threshold ${c.threshold}, dry_run ${c.dryRun ? 'on' : 'off'}, min gap ${c.minGapMinutes} minutes and ${c.minGapTurns} turns, later_tokens ${c.laterTokens}, countdown_seconds ${c.countdownSeconds}, idle_handoff ${c.idleHandoff ? 'on' : 'off'}, idle_handoff_min_tokens ${c.idleHandoffMinTokens}, method ${c.handoffMethod}, fallback ${c.handoffFallback}${usesCommand(c) ? `, handoff command ${commandShown(c.handoffCommand)}` : ''}, log level ${state.logLevel}`,
+    `settings: threshold ${c.threshold}, dry_run ${c.dryRun ? 'on' : 'off'}, min gap ${c.minGapMinutes} minutes and ${c.minGapTurns} turns, later_tokens ${c.laterTokens}, countdown_seconds ${c.countdownSeconds}, last_exchanges ${c.lastExchanges}, idle_handoff ${c.idleHandoff ? 'on' : 'off'}, idle_handoff_min_tokens ${c.idleHandoffMinTokens}, method ${c.handoffMethod}, fallback ${c.handoffFallback}${usesCommand(c) ? `, handoff command ${commandShown(c.handoffCommand)}` : ''}, log level ${state.logLevel}`,
   )
 }
 
@@ -471,7 +472,24 @@ const handoff = async ($: Engine, config: Config, state: State, tokens: number) 
     // `carryOut` ends the holding itself, in one step with its last look at what was held; this covers a throw before that.
     state.handingOver = false
     state.still = undefined
+    state.attachment = ''
   }
+}
+
+// Records one step of the user's exchanges in the session it belongs to: another session than the one recorded starts empty. Never throws:
+// it runs inside hooks that have passed the event on.
+const record = async (state: State, read: Promise<string | undefined>, change: (r: Recorded) => Recorded) => {
+  const session = await read
+  state.recorded = change(inSession(state.recorded, session))
+}
+
+// The attachment of the last exchanges, made once where a handover or the idle handoff's writing begins; its counts go to the log, never
+// what it holds.
+const carryExchanges = ($: Engine, config: Config, state: State) => {
+  if (config.lastExchanges === 0) return
+  const made = attachment(state.recorded.exchanges)
+  state.attachment = made.text
+  logTo($, state)('debug', `last exchanges: ${state.recorded.exchanges.length} of ${config.lastExchanges}, ${made.shortened} shortened`)
 }
 
 // A reason for postponing, or a failure, is said once: `key` is what makes two lines the same one.
@@ -492,6 +510,7 @@ const handOver = ($: Engine, decision: Extract<Decision, { kind: 'act' }>, confi
   state.held = []
   const tasks = state.lastStop?.background_tasks
   state.still = { standing: standingOf(tasks), forced: decision.forced === undefined ? [] : waiting(tasks) }
+  carryExchanges($, config, state)
   $.clock.after(0, () => void handoff($, config, state, decision.tokens))
 }
 
@@ -945,6 +964,7 @@ const prepareIdle = async ($: Engine, config: Config, state: State, { since, siz
     // Nothing runs between this and the return (a turn ends the pause), so the list is the one the return is judged on. The first message is
     // written here and kept in `idle.prepared`, so the list goes as soon as it is.
     state.still = { standing: standingOf(state.lastStop?.background_tasks), forced: [] }
+    carryExchanges($, config, state)
     try {
       const r = await prepare(io, state, config)
       state.still = undefined
@@ -973,6 +993,7 @@ const prepareIdle = async ($: Engine, config: Config, state: State, { since, siz
       }
     } finally {
       state.still = undefined
+      state.attachment = ''
       await release(io, state, undefined, () => {
         state.preparing = false
       })
@@ -1128,6 +1149,8 @@ export const register: Register = (on, options) => {
   // A reload puts the mod into a session that is already running, which raises no session start: the first turn says the settings then.
   on('turn.start', async ($, e, next) => {
     turnStarted(state.pairing)
+    // At once, before any wait: a prompt typed at rest is recorded once its turn has started, into that turn.
+    if (config !== undefined && config.lastExchanges > 0 && ofMainLoop(e)) state.recorded = started(state.recorded, e.turnId, e.text)
     // Only a mod with settings it can trust sees the end of the answer (`turn.complete` is past the gate below), so only it marks one running.
     if (config !== undefined) state.answerRunning = true
     state.lastStop = undefined
@@ -1238,7 +1261,19 @@ export const register: Register = (on, options) => {
     if (ended) logTo($, state)('debug', endedLine('submit'))
     if (handingOver) logTo($, state)('debug', `input while handing over (${e.origin.kind}): ${reason === undefined ? 'let through' : 'held'}`)
     const dropped = prepared === undefined ? reason : await comeBack($, state, prepared, e)
-    return dropped === undefined ? next(e) : { drop: dropped }
+    if (dropped !== undefined) return { drop: dropped }
+    // Only the user's own is a request, and nothing typed while the mod hands over. The session is asked before the input goes down, so the
+    // answer is in once it is recorded and no end of its turn comes between.
+    const own = byUser(e) && !handingOver && config.lastExchanges > 0
+    const session = own ? $.session.id().catch(() => undefined) : undefined
+    const out = await next(e)
+    // Recorded once it entered, and only if no hook beneath dropped it.
+    // As it arrived: a hook beneath may have rewritten it (one that masks secrets), and its turn starts with that text.
+    if (session !== undefined && !('drop' in out)) {
+      const text = out.text
+      await record(state, session, r => submitted(r, { text: requestOf({ ...e, text }), match: text }, e.turnId))
+    }
+    return out
   }).catch((_, e, next) => next(e))
 
   // Watches the calls of the command's turn for the user's decline at the permission prompt, and the first call after a compact for the size
@@ -1272,6 +1307,8 @@ export const register: Register = (on, options) => {
     // What was known of the session's cache and baseline ends with it; the next session's first turn reads again.
     const over = endPause($, state, 'the session ended')
     state.idle = freshIdle()
+    // The exchanges end with it too (a /clear, /resume, the mod's own handover), before any request of the next session could show it.
+    state.recorded = restarted(state.recorded)
     await logPauseOver($, settings, state, over)
     return next(e)
   })
@@ -1358,6 +1395,9 @@ export const register: Register = (on, options) => {
       endSeen(state.pairing, e.reason)
       state.answerRunning = false
     }
+    // At once, before any wait and before the judgement below: the answer of the turn that brings the handover is in its attachment, and a
+    // turn that starts meanwhile cannot take this end for its own. The session is checked at the requests, which every exchange has.
+    if (main && config.lastExchanges > 0) state.recorded = turnEnded(state.recorded, e.turnId, e.reason, e.answer, config.lastExchanges)
     const paired = main ? judgeable(state.pairing) : undefined
     const handingOver = underWay(state)
     await readLevel($, settings, state)
