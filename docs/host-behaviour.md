@@ -13,7 +13,7 @@ Each entry says how sure it is:
 Each entry ends with what it means for a mod. The code says why it is built the way it is; this page says what the host does that the
 why rests on.
 
-Contents: [Events and their order](#events-and-their-order) · [`/clear` and the session](#clear-and-the-session) · [Loading](#loading) ·
+Contents: [Events and their order](#events-and-their-order) · [Requests and turns](#requests-and-turns) · [`/clear` and the session](#clear-and-the-session) · [Loading](#loading) ·
 [Reload](#reload) · [Commands](#commands) · [`$.model.fork`](#modelfork) · [`$.session.compact`](#sessioncompact) ·
 [Idle compaction](#idle-compaction) · [Output](#output) · [Environment](#environment) · [Running more than one](#running-more-than-one) · [Inside the mod](#inside-the-mod) ·
 [Testing inside the host](#testing-inside-the-host) · [Measuring again](#measuring-again) · [Open](#open)
@@ -29,6 +29,34 @@ Contents: [Events and their order](#events-and-their-order) · [`/clear` and the
   is over.
 - **A turn without `turn.complete`.** _Assumed not to happen._ If the host ever sends a stop and no end, sweet-spot does nothing for
   that turn.
+
+## Requests and turns
+
+Measured 2026-10-31, Claude Code 2.1.316; throwaway mod that logged `prompt.submit` (on entry and when `next(e)` resolved),
+`turn.start` and `turn.complete` with their time, in a live session driven from a second terminal.
+
+- **A prompt typed at rest starts its turn before `next(e)` resolves.** `prompt.submit` comes with `origin.kind: 'composer'` and no
+  `turnId`; `turn.start` follows with the same `text`, and `next(e)` resolves 50 to 270 ms after it. _Measured, 5 of 5 prompts._ A mod
+  that records a prompt after `next(e)` finds its turn already running.
+- **A prompt typed over a turn resolves when it is queued, before that turn ends.** It carries the running turn's `turnId`, and
+  `next(e)` resolved 0.3 s and 3 s after Enter, both times while the turn still ran. _Measured, 2 of 2._ What happens to it then
+  depends on the turn:
+  - Over a turn without a tool call, it waited: the turn ended with its own answer, and a new turn started with a `turn.start.text`
+    equal to the typed `text`.
+  - Over a turn with a tool call, it went into that turn: no turn of its own, and the turn's answer replied to both prompts.
+
+  The moment `next(e)` resolves does not tell the two apart; a `turn.start` whose `text` equals the typed text does.
+
+- **`turn.complete`'s `answer` is the last message alone.** In a turn that wrote a line, ran a tool and then answered, `answer` held only
+  the answer after the tool, which is what the screen showed as the last answer. _Measured, 1 turn._
+- **A typed skill command arrives as typed.** `origin.kind: 'composer'`, `command` with the skill's name, `text` the typed line; the
+  `turn.start.text` of its turn is the expanded `<command-message>` form, so it does not equal the typed text. _Measured, 1 of 1._
+- **A mod's commands and messages arrive as the plugin's.** A skill run through `$.command.run` arrives with
+  `origin: { kind: 'plugin', name }` and `command` set; a `$.prompt.submit` with the same origin and no `isMeta`, its `turn.start.text`
+  framed as "The <plugin> plugin sent a message". Called from a `command.run` hook, `$.prompt.submit` is refused with "called from a
+  command.run hook, it would wait on the turn this hook is holding". _Measured, 1 of each._ `isMeta` was never seen; a mod cannot set it
+  (`PromptSubmitArgs` leaves it out).
+- **A local command raises no `prompt.submit`.** `/context` raised none, typed at rest or over a running turn. _Measured, 1 of each._
 
 ## `/clear` and the session
 
@@ -386,6 +414,12 @@ the core rests on them:
 - `command.run`
 - `$.session.compact`, with Esc, whose refusal reads "Compaction canceled."
 - the words the host uses for a declined permission (the start of the tool result that `USER_REJECTED` in `handoff.ts` looks for)
+
+For the last exchanges:
+
+- what a prompt typed over a turn does, and when its `next(e)` resolves (under Requests and turns)
+- `turn.complete`'s `answer` against the last answer on screen
+- the origins of a typed prompt, a typed skill command, a mod's `$.command.run` and `$.prompt.submit`, and that a local command raises no `prompt.submit`
 
 For the countdown:
 
