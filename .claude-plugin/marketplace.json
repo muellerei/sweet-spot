@@ -5,8 +5,7 @@
   "plugins": [
     {
       "name": "sweet-spot",
-      "source": "./",
-      "description": "Waits for a safe pause, then hands your session over or compacts it."
+      "source": "./"
     }
   ]
 }

@@ -4,6 +4,10 @@ All notable changes to sweet-spot are listed here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Changed
+
+- The marketplace entry no longer repeats the plugin description; `plugin.json` is the one place it is kept. The two copies had drifted apart. Claude Code takes the description from `plugin.json` when the entry has none: checked with Claude Code 2.1.327, with a separate config, by adding a marketplace without the entry's description from a local path and reading `claude plugin list --available --json`.
+
 ## [0.4.0] - 2026-10-31
 
 ### Added
