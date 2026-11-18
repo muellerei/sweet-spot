@@ -102,7 +102,15 @@ export const LIVE_IDLE = { options: { dry_run: false } }
 export const COLD = 'the cache has expired, your next message starts a fresh session with a handoff (/sweet-spot later to stay here)'
 
 // The band above the prompt, mounted as the host mounts it.
-const bandProps = (hasSurvey = false) => ({ hasSurvey, isWorking: false, maxRows: 10, bodyColumns: 200, scroll: { offset: 0, bodyRows: 10 }, view: {} })
+const bandProps = (hasSurvey = false) => ({
+  hasSurvey,
+  isCollapsed: false,
+  isWorking: false,
+  maxRows: 10,
+  bodyColumns: 200,
+  scroll: { offset: 0, bodyRows: 10 },
+  view: {},
+})
 
 export const band = ($: TestEngine) => $.ui.mount({ plugin: 'sweet-spot', surface: 'terminal', component: 'AbovePrompt', props: bandProps() })
 
