@@ -35,9 +35,10 @@ expect(re.findall(r'\| `threshold`\s*\| `(\d+)`', readme), str(THRESHOLD), 'READ
 expect([str(json.loads(read('.claude-plugin', 'plugin.json'))
             ['userConfig']['threshold']['default'])], str(THRESHOLD), 'plugin.json threshold default')
 
-# The marketplace lists the plugin with the description plugin.json gives it; the directory shows the one, /plugin the other.
-expect([p.get('description') for p in json.loads(read('.claude-plugin', 'marketplace.json'))['plugins'] if p.get('name') == 'sweet-spot'],
-       json.loads(read('.claude-plugin', 'plugin.json'))['description'], 'marketplace.json description of sweet-spot')
+# plugin.json is the one place the description is kept: the marketplace entry has none, and /plugin falls back to
+# plugin.json (checked with Claude Code 2.1.327). A second copy had drifted apart before.
+if any('description' in p for p in json.loads(read('.claude-plugin', 'marketplace.json'))['plugins']):
+    problems.append('marketplace.json: the plugin entry repeats the description, keep it in plugin.json only')
 
 workflow = read('.github', 'workflows', 'check.yml')
 pinned = re.findall(r"claude-code: \['([\d.]+)'", workflow)
