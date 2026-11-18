@@ -40,6 +40,7 @@ const DRY_TEN = { options: { dry_run: true, countdown_seconds: 10 } }
 // What the host hands the band: `bodyColumns` cells wide, and whether a survey holds it.
 const bandProps = (bodyColumns = 200, hasSurvey = false) => ({
   hasSurvey,
+  isCollapsed: false,
   isWorking: false,
   maxRows: 10,
   bodyColumns,
