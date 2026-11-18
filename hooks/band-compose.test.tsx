@@ -12,7 +12,15 @@ const OTHER = 'other band'
 // What the chain below sweet-spot draws above the prompt: another mod's band.
 const OTHER_BAND = { type: 'Box', props: {}, children: [{ type: 'Text', props: {}, children: [OTHER] }] }
 
-const bandProps = (hasSurvey: boolean) => ({ hasSurvey, isWorking: false, maxRows: 10, bodyColumns: 200, scroll: { offset: 0, bodyRows: 10 }, view: {} })
+const bandProps = (hasSurvey: boolean) => ({
+  hasSurvey,
+  isCollapsed: false,
+  isWorking: false,
+  maxRows: 10,
+  bodyColumns: 200,
+  scroll: { offset: 0, bodyRows: 10 },
+  view: {},
+})
 
 // The texts of the band in the order they are drawn, top to bottom.
 const texts = async (ui: Awaited<ReturnType<typeof band>>, hasSurvey = false) => {
